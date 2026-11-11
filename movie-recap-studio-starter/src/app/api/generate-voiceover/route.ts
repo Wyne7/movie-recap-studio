@@ -122,7 +122,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Gemini's Lite speech model is the budget-oriented OpenRouter TTS option.
+    // Gemini Flash TTS supports Burmese; the cheaper Lite variant currently does not.
     // Keep voice selection tied to the saved project setting, not client input.
     const voice = project.voice === "Male" ? "Charon" : "Kore";
     const upstream = await fetch(OPENROUTER_TTS_URL, {
@@ -159,6 +159,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const contentType = (upstream.headers.get("content-type") || "").split(";")[0].trim().toLowerCase();
+    if (contentType !== "audio/mpeg") {
+      await upstream.body?.cancel();
+      return NextResponse.json(
+        { success: false, error: "The selected TTS model returned " + (contentType || "an unknown format") + " instead of MP3. No file was saved." },
+        { status: 502 }
+      );
+    }
     const audioBytes = Buffer.from(await upstream.arrayBuffer());
     if (!audioBytes.length) {
       return NextResponse.json(
