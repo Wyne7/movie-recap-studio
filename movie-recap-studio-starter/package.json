@@ -12,7 +12,8 @@
     "next": "latest",
     "react": "latest",
     "react-dom": "latest",
-    "@supabase/supabase-js": "^2.119.0"
+    "@supabase/supabase-js": "^2.119.0",
+    "@met4citizen/headtts": "^1.4.0"
   },
   "devDependencies": {
     "@types/node": "latest",
