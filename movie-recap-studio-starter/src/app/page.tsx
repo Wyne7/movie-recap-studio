@@ -631,7 +631,7 @@ export default function HomePage() {
             <button className="primary-button" onClick={() => { setSelectedProject(null); setTitle(""); setSourceUrl(""); setLanguage("Myanmar"); setDuration("5 min"); setVoice("Female"); setGeneratedScript(""); setFormError(""); setModalOpen(true); }}><span>＋</span> Create project</button>
           </div>
 
-          <div className="prototype-notice"><span className="notice-icon">ⓘ</span><span><strong>Foundation build</strong> — {isSupabaseConfigured ? "Your projects are saved in your private Supabase account." : "Draft projects are saved in this browser only. Configure Supabase to sync them across devices."} AI analysis, voice generation and video rendering are next.</span></div>
+          <div className="prototype-notice"><span className="notice-icon">ⓘ</span><span><strong>Foundation build</strong> — {isSupabaseConfigured ? "Your projects are saved in your private Supabase account." : "Draft projects are saved in this browser only. Configure Supabase to sync them across devices."} Voiceover generation is available for saved scripts; subtitles and video rendering are next.</span></div>
 
           <div className="stats-grid">
             <article className="stat-card"><div className="stat-top"><span>Total projects</span><span className="stat-icon purple">▦</span></div><div className="stat-number">{hydrated ? projects.length : "—"}</div><div className="stat-foot">In this browser workspace</div></article>
@@ -717,7 +717,7 @@ export default function HomePage() {
               <section style={{ border: "1px solid #e7e7ed", borderRadius: 9, padding: 13, display: "grid", gap: 10 }}>
                 <div>
                   <h3 style={{ fontSize: 12, margin: "0 0 5px" }}>AI Voiceover · OpenRouter</h3>
-                  <p style={{ fontSize: 11, color: "#747484", margin: 0 }}>Budget model: Gemini 3.8 Flash TTS. Audio is saved in your private storage.</p>
+                  <p style={{ fontSize: 11, color: "#747484", margin: 0 }}>Burmese-capable model: Gemini 3.8 Flash TTS. Audio is saved in your private storage.</p>
                 </div>
                 {voiceoverUrl && <audio controls preload="none" src={voiceoverUrl} style={{ width: "100%" }}>Your browser does not support audio playback.</audio>}
                 <button type="button" className="secondary-button" onClick={generateVoiceover} disabled={isGenerating || isGeneratingVoiceover}>
