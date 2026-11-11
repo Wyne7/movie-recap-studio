@@ -9,7 +9,7 @@ const GEMINI_INTERACTIONS_URL = "https://generativelanguage.googleapis.com/v1bet
 function isValidYouTubeUrl(value: string): boolean {
   try {
     const url = new URL(value);
-    const hostname = url.hostname.toLowerCase().replace(/^www[.] /, "");
+    const hostname = url.hostname.toLowerCase();
     const normalizedHost = hostname.startsWith("www.") ? hostname.slice(4) : hostname;
 
     if (url.protocol !== "https:" && url.protocol !== "http:") return false;
