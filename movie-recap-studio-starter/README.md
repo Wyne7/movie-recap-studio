@@ -83,3 +83,35 @@ The initial endpoint accepts up to 10,000 script characters in one request and h
 ## Current limitations
 
 Voiceover generation requires a signed-in Supabase user, a working OpenRouter key, and the migration above. It does not yet split long scripts into timed scenes, generate subtitles, or render a video. Use only source media and scripts you own or are authorized to process.
+
+
+# Movie Recap Studio
+
+A Next.js starter for creating recap projects from video links.
+
+## MyanmarTTS voiceover (open source)
+
+The app's authenticated `/api/generate-voiceover` route now calls a separately hosted Python service in `myanmar-tts-service/`. The service uses `freococo/MyanmarTTS` (Burmese-only) and stores WAV output in the existing private Supabase `voiceovers` bucket.
+
+### Deployment steps
+
+1. Create a **Docker Space** on Hugging Face and upload the contents of `myanmar-tts-service/`.
+2. Configure a Space secret named `MYANMAR_TTS_SERVICE_TOKEN` with a long random secret.
+3. Wait for the model to load, then check `https://YOUR-SPACE.hf.space/health`.
+4. In Vercel Environment Variables, add server-only `MYANMAR_TTS_SERVICE_URL` (Space URL) and `MYANMAR_TTS_SERVICE_TOKEN` (same secret).
+5. Redeploy Vercel.
+6. Open a saved project with a Myanmar-language script and select **Generate Voiceover**.
+
+Do not use `NEXT_PUBLIC_` for either service variable. Never expose the service token in browser code.
+
+### Free-tier caveats
+
+- The model and generated audio are CC0. The model supports Burmese only and currently uses one default voice; the app's Male/Female selection does not change the synthesized voice.
+- The Hugging Face model card says CPU inference is supported but slower. CPU Basic lists 2 vCPU and 16 GB RAM with no hourly compute charge. Spaces may sleep after inactivity, so cold starts can be slow.
+- Important: Hugging Face's current documentation says creating compute-backed Docker/Gradio Spaces may require a paid Hugging Face plan even when CPU Basic has no hourly compute price. Check the account's Space creation requirements before relying on this as a zero-cost host.
+- Vercel Hobby function duration and memory limits apply. This route requests up to 300 seconds, but the actual allowed duration depends on Fluid Compute and the Vercel plan. Long scripts on CPU may time out.
+- Initial integration is synchronous and capped at 3,500 characters. For reliable longer recaps, the next step is an asynchronous job queue and chunked synthesis.
+
+### API security
+
+The Next.js route validates the signed-in Supabase user and project ownership. The Python service requires a private bearer token. Generated audio is uploaded to the private Supabase bucket and played using a one-hour signed URL.
