@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
 
@@ -38,6 +39,39 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { success: false, error: "OPENROUTER_API_KEY is not configured on the server." },
         { status: 500 }
+      );
+    }
+
+    const authorization = request.headers.get("authorization") || "";
+    const accessToken = authorization.startsWith("Bearer ")
+      ? authorization.slice("Bearer ".length).trim()
+      : "";
+
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabasePublishableKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+
+    if (!accessToken || !supabaseUrl || !supabasePublishableKey) {
+      return NextResponse.json(
+        { success: false, error: "Sign in to your account before generating a recap." },
+        { status: 401 }
+      );
+    }
+
+    const supabase = createClient(supabaseUrl, supabasePublishableKey, {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+        detectSessionInUrl: false,
+      },
+    });
+
+    const { data: authData, error: authError } =
+      await supabase.auth.getUser(accessToken);
+
+    if (authError || !authData.user) {
+      return NextResponse.json(
+        { success: false, error: "Your session is invalid or expired. Please sign in again." },
+        { status: 401 }
       );
     }
 
