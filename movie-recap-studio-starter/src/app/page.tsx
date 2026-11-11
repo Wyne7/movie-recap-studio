@@ -68,7 +68,9 @@ function isValidYouTubeUrl(value: string) {
     if (hostname === "youtube.com" || hostname === "m.youtube.com") {
       return (
         (parsed.pathname === "/watch" && Boolean(parsed.searchParams.get("v"))) ||
-        /^\/(shorts|embed|live)\/[^/]+/.test(parsed.pathname)
+        ["/shorts/", "/embed/", "/live/"].some(
+          (prefix) => parsed.pathname.startsWith(prefix) && parsed.pathname.length > prefix.length
+        )
       );
     }
 
@@ -90,6 +92,7 @@ export default function HomePage() {
   const [sourceUrl, setSourceUrl] = useState("");
   const [language, setLanguage] = useState<"Myanmar" | "English">("Myanmar");
   const [duration, setDuration] = useState<"3 min" | "5 min" | "10 min">("5 min");
+  const [recapType, setRecapType] = useState<"review" | "full_recap">("full_recap");
   const [voice, setVoice] = useState<"Female" | "Male">("Female");
   const [formError, setFormError] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
@@ -346,6 +349,7 @@ export default function HomePage() {
           videoUrl: sourceUrl.trim(),
           language,
           duration,
+          recapType,
         }),
       });
 
@@ -609,7 +613,8 @@ export default function HomePage() {
           <form onSubmit={createProject} className="project-form">
             <label className="field-label">Project name <span>Optional</span><input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="e.g. The hidden truth behind…" maxLength={90} /></label>
             <label className="field-label">Video URL <span>Required</span><input value={sourceUrl} onChange={(event) => setSourceUrl(event.target.value)} placeholder="https://www.youtube.com/watch?v=..." type="url" required /></label>
-            <div className="form-two-col"><label className="field-label">Narration language<select value={language} onChange={(event) => setLanguage(event.target.value as "Myanmar" | "English")}><option>Myanmar</option><option>English</option></select></label><label className="field-label">Recap length<select value={duration} onChange={(event) => setDuration(event.target.value as "3 min" | "5 min" | "10 min")}><option>3 min</option><option>5 min</option><option>10 min</option></select></label></div>
+            <div className="form-two-col"><label className="field-label">Recap style<select value={recapType} onChange={(event) => setRecapType(event.target.value as "review" | "full_recap")}><option value="review">Movie Review / Commentary</option><option value="full_recap">Full Movie Recap</option></select></label><label className="field-label">Narration language<select value={language} onChange={(event) => setLanguage(event.target.value as "Myanmar" | "English")}><option>Myanmar</option><option>English</option></select></label></div>
+            <label className="field-label">Recap length<select value={duration} onChange={(event) => setDuration(event.target.value as "3 min" | "5 min" | "10 min")}><option>3 min</option><option>5 min</option><option>10 min</option></select></label>
             <div className="field-label">Narrator voice</div><div className="voice-options"><button type="button" className={`voice-option ${voice === "Female" ? "selected" : ""}`} onClick={() => setVoice("Female")}><span className="voice-avatar">♀</span><span><strong>Female</strong><small>Warm narration</small></span><span className="radio-dot" /></button><button type="button" className={`voice-option ${voice === "Male" ? "selected" : ""}`} onClick={() => setVoice("Male")}><span className="voice-avatar male">♂</span><span><strong>Male</strong><small>Deep narration</small></span><span className="radio-dot" /></button></div>
             {isGenerating && (
               <p className="modal-note" role="status">
@@ -632,7 +637,7 @@ export default function HomePage() {
                   overflowY: "auto",
                 }}
               >
-                <h3 style={{ fontSize: 12, margin: "0 0 9px" }}>Generated recap script</h3>
+                <h3 style={{ fontSize: 12, margin: "0 0 9px" }}>{recapType === "review" ? "Generated review / commentary script" : "Generated full movie recap script"}</h3>
                 <pre
                   style={{
                     whiteSpace: "pre-wrap",

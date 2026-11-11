@@ -9,12 +9,13 @@ const GEMINI_INTERACTIONS_URL = "https://generativelanguage.googleapis.com/v1bet
 function isValidYouTubeUrl(value: string): boolean {
   try {
     const url = new URL(value);
-    const hostname = url.hostname.toLowerCase().replace(/^www\\./, "");
+    const hostname = url.hostname.toLowerCase();
+    const normalizedHost = hostname.startsWith("www.") ? hostname.slice(4) : hostname;
 
     if (url.protocol !== "https:" && url.protocol !== "http:") return false;
-    if (hostname === "youtu.be") return url.pathname.length > 1;
+    if (normalizedHost === "youtu.be") return url.pathname.length > 1;
 
-    if (hostname === "youtube.com" || hostname === "m.youtube.com") {
+    if (normalizedHost === "youtube.com" || normalizedHost === "m.youtube.com") {
       return (
         (url.pathname === "/watch" && Boolean(url.searchParams.get("v"))) ||
         ["/shorts/", "/embed/", "/live/"].some(
@@ -87,6 +88,7 @@ export async function POST(request: NextRequest) {
     const videoUrl = String(body.videoUrl || "").trim();
     const title = String(body.title || "").trim() || "YouTube video";
     const language = body.language === "English" ? "English" : "Burmese";
+    const recapType = body.recapType === "review" ? "review" : "full_recap";
     const allowedDurations = ["3 min", "5 min", "10 min"];
     const duration = allowedDurations.includes(body.duration) ? body.duration : "5 min";
 
@@ -108,11 +110,13 @@ export async function POST(request: NextRequest) {
       "You are a careful professional video recap writer.",
       "Analyze the actual public YouTube video supplied immediately before this instruction. Do not infer the content from its title alone.",
       "Write a narration script in " + language + " for a target runtime of " + duration + ".",
-      "For a movie, explain the main story in chronological order.",
-      "For sports or highlights, narrate the actual events in sequence.",
-      "Explain key people, events, turning points, and the ending where available.",
+      recapType === "review"
+        ? "Create a movie review/commentary: briefly summarize the premise, then give original analysis of themes, characters, performances, pacing, strengths, weaknesses, and commentary. Do not retell every scene."
+        : "Create a chronological full story recap from beginning to ending, covering major plot turns and character motivations in your own words.",
+      "For non-movie videos, narrate the actual events and key points in sequence.",
       "Use natural spoken narration suitable for voice-over.",
       "Do not invent scenes, goals, dialogue, scores, or facts.",
+      "Do not reproduce dialogue or distinctive copyrighted expression.",
       "If the video cannot be accessed or does not provide enough information, say so clearly rather than guessing.",
       "Project title: " + title + ".",
       "Return only the finished narration script."
@@ -185,6 +189,7 @@ export async function POST(request: NextRequest) {
       title,
       language,
       duration,
+      recapType,
       script,
       usageCost: 0,
     });
