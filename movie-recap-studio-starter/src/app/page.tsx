@@ -535,7 +535,7 @@ export default function HomePage() {
     setIsGeneratingVoiceover(true);
     setFormError("");
     setVoiceoverUrl("");
-    setNotice("Generating voiceover with OpenRouter. Please do not click again.");
+    setNotice("Generating Burmese voiceover with MyanmarTTS. The free CPU service may take a few minutes; please do not click again.");
     try {
       const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
       if (sessionError) throw new Error(sessionError.message);
@@ -716,14 +716,14 @@ export default function HomePage() {
             {generatedScript && selectedProject && (
               <section style={{ border: "1px solid #e7e7ed", borderRadius: 9, padding: 13, display: "grid", gap: 10 }}>
                 <div>
-                  <h3 style={{ fontSize: 12, margin: "0 0 5px" }}>AI Voiceover · OpenRouter</h3>
-                  <p style={{ fontSize: 11, color: "#747484", margin: 0 }}>Burmese-capable model: Gemini 3.8 Flash TTS. Audio is saved in your private storage.</p>
+                  <h3 style={{ fontSize: 12, margin: "0 0 5px" }}>Myanmar Voiceover · Open Source</h3>
+                  <p style={{ fontSize: 11, color: "#747484", margin: 0 }}>MyanmarTTS open-source Burmese model. Audio is saved in your private storage. The free CPU host may sleep between uses.</p>
                 </div>
                 {voiceoverUrl && <audio controls preload="none" src={voiceoverUrl} style={{ width: "100%" }}>Your browser does not support audio playback.</audio>}
                 <button type="button" className="secondary-button" onClick={generateVoiceover} disabled={isGenerating || isGeneratingVoiceover}>
                   {isGeneratingVoiceover ? "Generating voiceover..." : selectedProject.voiceoverPath ? "Regenerate Voiceover" : "Generate Voiceover →"}
                 </button>
-                {isGeneratingVoiceover && <p className="modal-note">One paid voice generation request is running. Please wait and do not click again.</p>}
+                {isGeneratingVoiceover && <p className="modal-note">One voice generation request is running. The first request may take longer while the free service wakes up.</p>}
               </section>
             )}
                         {formError && <p className="form-error" role="alert">{formError}</p>}
