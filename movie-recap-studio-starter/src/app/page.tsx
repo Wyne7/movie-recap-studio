@@ -94,6 +94,7 @@ export default function HomePage() {
   const [formError, setFormError] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedScript, setGeneratedScript] = useState("");
+  const [selectedProject, setSelectedProject] = useState<RecapProject | null>(null);
 
   useEffect(() => {
     if (!isSupabaseConfigured) {
@@ -184,6 +185,62 @@ export default function HomePage() {
     const submitter = (event.nativeEvent as SubmitEvent)
       .submitter as HTMLButtonElement | null;
     const generateAfterSave = submitter?.value === "generate";
+
+    if (selectedProject) {
+      if (!isValidYouTubeUrl(sourceUrl.trim())) {
+        setFormError("Enter a valid YouTube video URL.");
+        return;
+      }
+
+      const updatedProject: RecapProject = {
+        ...selectedProject,
+        title: title.trim() || "Untitled movie recap",
+        sourceUrl: sourceUrl.trim(),
+        language,
+        duration,
+        voice,
+      };
+
+      if (generateAfterSave) {
+        await generateScriptForProject(updatedProject);
+        return;
+      }
+
+      const supabase = getSupabaseBrowserClient();
+      if (isSupabaseConfigured && (!supabase || !user)) {
+        setFormError("Please sign in again before saving this project.");
+        return;
+      }
+
+      if (isSupabaseConfigured && supabase && user) {
+        const { error } = await supabase
+          .from("projects")
+          .update({
+            title: updatedProject.title,
+            source_url: updatedProject.sourceUrl,
+            language: updatedProject.language,
+            duration: updatedProject.duration,
+            voice: updatedProject.voice,
+          })
+          .eq("id", updatedProject.id)
+          .eq("user_id", user.id);
+
+        if (error) {
+          setFormError("Could not update project: " + error.message);
+          return;
+        }
+      }
+
+      setProjects((current) =>
+        current.map((project) => project.id === updatedProject.id ? updatedProject : project)
+      );
+      setSelectedProject(updatedProject);
+      setGeneratedScript(updatedProject.script ?? "");
+      setModalOpen(false);
+      setNotice("Project changes saved. No AI generation was performed.");
+      window.setTimeout(() => setNotice(""), 5500);
+      return;
+    }
 
     if (!isValidYouTubeUrl(sourceUrl.trim())) {
       setFormError("Enter a valid YouTube video URL.");
@@ -365,6 +422,83 @@ export default function HomePage() {
     }
   }
 
+  async function generateScriptForProject(project: RecapProject) {
+    const supabase = getSupabaseBrowserClient();
+    if (!supabase || !user) {
+      setFormError("Please sign in again before generating a recap script.");
+      return;
+    }
+
+    setIsGenerating(true);
+    setFormError("");
+    setNotice("Analyzing the saved YouTube project and generating your recap script...");
+
+    try {
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError) throw new Error(sessionError.message);
+      const accessToken = sessionData.session?.access_token;
+      if (!accessToken) throw new Error("Your session expired. Please sign in again.");
+
+      const response = await fetch("/api/generate-recap", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: "Bearer " + accessToken,
+        },
+        body: JSON.stringify({
+          title: project.title,
+          videoUrl: project.sourceUrl,
+          language: project.language,
+          duration: project.duration,
+        }),
+      });
+
+      const result = await response.json().catch(() => null);
+      if (!response.ok || !result?.success || typeof result.script !== "string") {
+        throw new Error(result?.error || "AI generation failed (" + response.status + ").");
+      }
+
+      const script = result.script.trim();
+      if (!script) throw new Error("The AI returned an empty recap script.");
+
+      const { error: updateError } = await supabase
+        .from("projects")
+        .update({ script, status: "Ready to edit" })
+        .eq("id", project.id)
+        .eq("user_id", user.id);
+
+      if (updateError) {
+        throw new Error("Script was generated but could not be saved: " + updateError.message);
+      }
+
+      const completedProject = { ...project, script, status: "Ready to edit" as ProjectStatus };
+      setProjects((current) =>
+        current.map((item) => item.id === project.id ? completedProject : item)
+      );
+      setSelectedProject(completedProject);
+      setGeneratedScript(script);
+      setNotice("Recap script generated and saved to this project.");
+      window.setTimeout(() => setNotice(""), 7000);
+    } catch (caught) {
+      setNotice("");
+      setFormError(caught instanceof Error ? caught.message : "Could not generate the recap script.");
+    } finally {
+      setIsGenerating(false);
+    }
+  }
+
+  function openProject(project: RecapProject) {
+    setSelectedProject(project);
+    setTitle(project.title);
+    setSourceUrl(project.sourceUrl);
+    setLanguage(project.language);
+    setDuration(project.duration);
+    setVoice(project.voice);
+    setGeneratedScript(project.script ?? "");
+    setFormError("");
+    setModalOpen(true);
+  }
+
   async function deleteProject(id: string) {
     if (isSupabaseConfigured) {
       const supabase = getSupabaseBrowserClient();
@@ -400,7 +534,7 @@ export default function HomePage() {
         <div className="side-label">WORKSPACE</div>
         <nav className="side-nav" aria-label="Main navigation">
           <a className="nav-link active" href="#home"><span className="nav-icon">▦</span> Overview</a>
-          <button className="nav-link" onClick={() => { setGeneratedScript(""); setFormError(""); setModalOpen(true); }}><span className="nav-icon">＋</span> New project</button>
+          <button className="nav-link" onClick={() => { setSelectedProject(null); setTitle(""); setSourceUrl(""); setLanguage("Myanmar"); setDuration("5 min"); setVoice("Female"); setGeneratedScript(""); setFormError(""); setModalOpen(true); }}><span className="nav-icon">＋</span> New project</button>
         </nav>
         <div className="sidebar-bottom">
           <div className="help-card">
@@ -429,7 +563,7 @@ export default function HomePage() {
               <h1>Make every story <em>worth sharing.</em></h1>
               <p className="page-subtitle">Create clear, engaging movie recaps with narration and subtitles.</p>
             </div>
-            <button className="primary-button" onClick={() => { setGeneratedScript(""); setFormError(""); setModalOpen(true); }}><span>＋</span> Create project</button>
+            <button className="primary-button" onClick={() => { setSelectedProject(null); setTitle(""); setSourceUrl(""); setLanguage("Myanmar"); setDuration("5 min"); setVoice("Female"); setGeneratedScript(""); setFormError(""); setModalOpen(true); }}><span>＋</span> Create project</button>
           </div>
 
           <div className="prototype-notice"><span className="notice-icon">ⓘ</span><span><strong>Foundation build</strong> — {isSupabaseConfigured ? "Your projects are saved in your private Supabase account." : "Draft projects are saved in this browser only. Configure Supabase to sync them across devices."} AI analysis, voice generation and video rendering are next.</span></div>
@@ -448,7 +582,7 @@ export default function HomePage() {
                 <div className="empty-art"><span className="art-spark">✦</span><span className="art-play">▶</span><span className="art-line" /></div>
                 <h3>{projects.length === 0 ? "Your first recap starts here" : "No matching projects"}</h3>
                 <p>{projects.length === 0 ? "Add a video link to create your first movie recap project." : "Try another title or clear your search."}</p>
-                {projects.length === 0 && <button className="secondary-button" onClick={() => { setGeneratedScript(""); setFormError(""); setModalOpen(true); }}>Create your first project <span>→</span></button>}
+                {projects.length === 0 && <button className="secondary-button" onClick={() => { setSelectedProject(null); setTitle(""); setSourceUrl(""); setLanguage("Myanmar"); setDuration("5 min"); setVoice("Female"); setGeneratedScript(""); setFormError(""); setModalOpen(true); }}>Create your first project <span>→</span></button>}
                 {projects.length > 0 && <button className="secondary-button" onClick={() => setSearch("")}>Clear search</button>}
               </div>
             ) : (
@@ -457,7 +591,7 @@ export default function HomePage() {
                   <article className="project-card" key={project.id}>
                     <div className="project-thumb"><span className="thumb-play">▶</span><span className="thumb-label">VIDEO SOURCE</span></div>
                     <div className="project-info"><h3>{project.title}</h3><a href={project.sourceUrl} target="_blank" rel="noreferrer">{project.sourceUrl}</a><div className="project-meta"><span>{project.language}</span><i /> <span>{project.duration}</span><i /> <span>{project.voice} voice</span></div></div>
-                    <div className="project-right"><span className={`status-pill ${project.status.toLowerCase().replaceAll(" ", "-")}`}>{project.status}</span><small>{formatDate(project.createdAt)}</small><button className="delete-button" onClick={() => deleteProject(project.id)} aria-label={`Delete ${project.title}`}>Delete</button></div>
+                    <div className="project-right"><span className={`status-pill ${project.status.toLowerCase().replaceAll(" ", "-")}`}>{project.status}</span><small>{formatDate(project.createdAt)}</small><button className="secondary-button" onClick={() => openProject(project)}>Open project</button><button className="delete-button" onClick={() => deleteProject(project.id)} aria-label={`Delete ${project.title}`}>Delete</button></div>
                   </article>
                 ))}
               </div>
@@ -471,7 +605,7 @@ export default function HomePage() {
 
       {modalOpen && <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setModalOpen(false); }}>
         <section className="modal" role="dialog" aria-modal="true" aria-labelledby="create-title">
-          <div className="modal-heading"><div><div className="eyebrow">NEW WORKSPACE PROJECT</div><h2 id="create-title">Start a new recap</h2><p>Add a video source and choose your narration settings.</p></div><button className="close-button" onClick={() => setModalOpen(false)} aria-label="Close">×</button></div>
+          <div className="modal-heading"><div><div className="eyebrow">{selectedProject ? "SAVED WORKSPACE PROJECT" : "NEW WORKSPACE PROJECT"}</div><h2 id="create-title">{selectedProject ? selectedProject.title : "Start a new recap"}</h2><p>{selectedProject ? "Review the saved settings and script, or generate a script for this project." : "Add a video source and choose your narration settings."}</p></div><button className="close-button" onClick={() => setModalOpen(false)} aria-label="Close">×</button></div>
           <form onSubmit={createProject} className="project-form">
             <label className="field-label">Project name <span>Optional</span><input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="e.g. The hidden truth behind…" maxLength={90} /></label>
             <label className="field-label">Video URL <span>Required</span><input value={sourceUrl} onChange={(event) => setSourceUrl(event.target.value)} placeholder="https://www.youtube.com/watch?v=..." type="url" required /></label>
@@ -480,6 +614,11 @@ export default function HomePage() {
             {isGenerating && (
               <p className="modal-note" role="status">
                 AI is analyzing the YouTube video. Keep this window open; do not submit again.
+              </p>
+            )}
+            {selectedProject && !generatedScript && (
+              <p className="modal-note" role="status">
+                This saved project does not have a recap script yet. Choose Generate Recap Script when you are ready. Saving changes will not use AI.
               </p>
             )}
             {generatedScript && (
@@ -513,10 +652,10 @@ export default function HomePage() {
             <div className="modal-actions">
               <button type="button" className="cancel-button" onClick={() => setModalOpen(false)}>Close</button>
               <button type="submit" name="action" value="save" className="secondary-button" disabled={isGenerating}>
-                Save Project
+                {selectedProject ? "Save Changes" : "Save Project"}
               </button>
               <button type="submit" name="action" value="generate" className="primary-button" disabled={isGenerating}>
-                {isGenerating ? "Analyzing..." : "Generate Recap Script →"}
+                {isGenerating ? "Analyzing..." : selectedProject?.script ? "Regenerate Recap Script →" : "Generate Recap Script →"}
               </button>
             </div>
           </form>
