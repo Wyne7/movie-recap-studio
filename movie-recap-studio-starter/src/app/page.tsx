@@ -103,6 +103,7 @@ export default function HomePage() {
   const [selectedProject, setSelectedProject] = useState<RecapProject | null>(null);
   const [voiceoverUrl, setVoiceoverUrl] = useState("");
   const [isGeneratingVoiceover, setIsGeneratingVoiceover] = useState(false);
+  const [isPreviewingEnglish, setIsPreviewingEnglish] = useState(false);
 
   useEffect(() => {
     if (!isSupabaseConfigured) {
@@ -564,6 +565,46 @@ export default function HomePage() {
     }
   }
 
+  function previewEnglishVoiceover() {
+    if (typeof window === "undefined" || !("speechSynthesis" in window)) {
+      setFormError("This browser does not support built-in speech. Please try the latest Chrome or Edge.");
+      return;
+    }
+    if (isPreviewingEnglish) {
+      window.speechSynthesis.cancel();
+      setIsPreviewingEnglish(false);
+      return;
+    }
+    const text = generatedScript.trim();
+    if (!text) {
+      setFormError("Generate or open a saved English script first.");
+      return;
+    }
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = "en-US";
+    utterance.rate = 0.96;
+    utterance.pitch = voice === "Female" ? 1.08 : 0.88;
+    const voices = window.speechSynthesis.getVoices();
+    const englishVoices = voices.filter((item) => item.lang.toLowerCase().startsWith("en"));
+    const preferredNames = voice === "Female"
+      ? ["samantha", "victoria", "aria", "jenny", "zira", "female"]
+      : ["daniel", "david", "mark", "guy", "alex", "male"];
+    const preferred = englishVoices.find((item) =>
+      preferredNames.some((name) => item.name.toLowerCase().includes(name))
+    );
+    const fallback = englishVoices.find((item) => item.lang.toLowerCase() === "en-us") ?? englishVoices[0];
+    if (preferred || fallback) utterance.voice = preferred ?? fallback;
+    utterance.onstart = () => setIsPreviewingEnglish(true);
+    utterance.onend = () => setIsPreviewingEnglish(false);
+    utterance.onerror = () => {
+      setIsPreviewingEnglish(false);
+      setFormError("English speech preview failed. Try another voice or browser.");
+    };
+    setFormError("");
+    window.speechSynthesis.speak(utterance);
+  }
+
   async function deleteProject(id: string) {
     if (isSupabaseConfigured) {
       const supabase = getSupabaseBrowserClient();
@@ -713,7 +754,19 @@ export default function HomePage() {
                 </pre>
               </section>
             )}
-            {generatedScript && selectedProject && (
+            {generatedScript && selectedProject && selectedProject.language === "English" && (
+              <section style={{ border: "1px solid #e7e7ed", borderRadius: 9, padding: 13, display: "grid", gap: 10 }}>
+                <div>
+                  <h3 style={{ fontSize: 12, margin: "0 0 5px" }}>English Voiceover · Free on this device</h3>
+                  <p style={{ fontSize: 11, color: "#747484", margin: 0 }}>Uses the built-in speech engine in Android Chrome and desktop Chrome/Edge. No API key, credits, or hosting required. Available voices and sound quality depend on the device. Keep this page open while it speaks.</p>
+                </div>
+                <button type="button" className="secondary-button" onClick={previewEnglishVoiceover} disabled={isGenerating || isGeneratingVoiceover}>
+                  {isPreviewingEnglish ? "Stop English Preview ■" : "Preview English Voiceover →"}
+                </button>
+                <p className="modal-note">This first free test plays speech directly in your browser; it does not yet create or save an MP3/WAV file. The Female/Male choice selects a matching installed voice when available, otherwise it uses the device's default English voice.</p>
+              </section>
+            )}
+            {generatedScript && selectedProject && selectedProject.language === "Myanmar" && (
               <section style={{ border: "1px solid #e7e7ed", borderRadius: 9, padding: 13, display: "grid", gap: 10 }}>
                 <div>
                   <h3 style={{ fontSize: 12, margin: "0 0 5px" }}>Myanmar Voiceover · Open Source</h3>
