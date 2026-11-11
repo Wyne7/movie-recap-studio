@@ -85,9 +85,10 @@ function audioBuffersToWav(buffers: AudioBuffer[]): Blob {
 
   let outputFrame = 0;
   for (const buffer of buffers) {
+    const channelData = Array.from({ length: channels }, (_, channel) => buffer.getChannelData(channel));
     for (let frame = 0; frame < buffer.length; frame += 1) {
       for (let channel = 0; channel < channels; channel += 1) {
-        const sample = Math.max(-1, Math.min(1, buffer.getChannelData(channel)[frame]));
+        const sample = Math.max(-1, Math.min(1, channelData[channel][frame]));
         const value = sample < 0 ? sample * 32768 : sample * 32767;
         view.setInt16(44 + (outputFrame * channels + channel) * bytesPerSample, value, true);
       }
@@ -733,11 +734,11 @@ export default function HomePage() {
       let engine = headTtsRef.current;
       if (!engine) {
         const { HeadTTS } = await import("@met4citizen/headtts");
-        const voiceId = voice === "Female" ? "af_heart" : "am_michael";
+        const voiceId = voice === "Female" ? "af_bella" : "am_fenrir";
         engine = new HeadTTS({
           endpoints: ["webgpu", "wasm"],
-          workerModule: "https://cdn.jsdelivr.net/npm/@met4citizen/headtts@1.4.0/modules/worker-tts.mjs",
-          dictionaryURL: "https://cdn.jsdelivr.net/npm/@met4citizen/headtts@1.4.0/dictionaries/",
+          workerModule: "https://cdn.jsdelivr.net/npm/@met4citizen/headtts@1.3.0/modules/worker-tts.mjs",
+          dictionaryURL: "https://cdn.jsdelivr.net/npm/@met4citizen/headtts@1.3.0/dictionaries/",
           voices: [voiceId],
           defaultVoice: voiceId,
           defaultLanguage: "en-us",
@@ -760,7 +761,7 @@ export default function HomePage() {
 
       setEnglishProgress(`Generating ${voice.toLowerCase()} English voice and matching subtitle timings...`);
       await engine.setup({
-        voice: voice === "Female" ? "af_heart" : "am_michael",
+        voice: voice === "Female" ? "af_bella" : "am_fenrir",
         language: "en-us",
         speed: 0.96,
         audioEncoding: "wav",
@@ -996,7 +997,7 @@ export default function HomePage() {
                     </div>
                   </div>
                 )}
-                <p className="modal-note">Narrator: <strong>{voice}</strong> · {voice === "Female" ? "American English — Heart" : "American English — Michael"}. Subtitle timing comes from the generated speech timestamps. This creates downloadable files locally; it does not upload them to your account.</p>
+                <p className="modal-note">Narrator: <strong>{voice}</strong> · {voice === "Female" ? "American English — Bella" : "American English — Fenrir"}. Subtitle timing comes from the generated speech timestamps. This creates downloadable files locally; it does not upload them to your account.</p>
                 <button type="button" className="secondary-button" onClick={previewEnglishVoiceover} disabled={isGenerating || isGeneratingVoiceover || isGeneratingEnglishAudio}>
                   {isPreviewingEnglish ? "Stop quick device preview ■" : "Quick preview using device voice"}
                 </button>
