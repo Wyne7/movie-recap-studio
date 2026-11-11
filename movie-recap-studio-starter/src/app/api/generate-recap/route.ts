@@ -17,7 +17,9 @@ function isValidYouTubeUrl(value: string): boolean {
     if (hostname === "youtube.com" || hostname === "m.youtube.com") {
       return (
         (url.pathname === "/watch" && Boolean(url.searchParams.get("v"))) ||
-        /^\\/(shorts|embed|live)\\/[^/]+/.test(url.pathname)
+        ["/shorts/", "/embed/", "/live/"].some(
+          (prefix) => url.pathname.startsWith(prefix) && url.pathname.length > prefix.length
+        )
       );
     }
 
