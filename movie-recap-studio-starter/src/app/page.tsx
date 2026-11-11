@@ -580,22 +580,33 @@ export default function HomePage() {
       setFormError("Generate or open a saved English script first.");
       return;
     }
+
     window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = "en-US";
     utterance.rate = 0.96;
-    utterance.pitch = voice === "Female" ? 1.08 : 0.88;
-    const voices = window.speechSynthesis.getVoices();
-    const englishVoices = voices.filter((item) => item.lang.toLowerCase().startsWith("en"));
+    // Select a real installed voice by its commonly used name. Pitch alone does
+    // not turn one voice into a genuinely different male/female narrator.
+    utterance.pitch = 1;
+    const englishVoices = window.speechSynthesis
+      .getVoices()
+      .filter((item) => item.lang.toLowerCase().startsWith("en"));
     const preferredNames = voice === "Female"
-      ? ["samantha", "victoria", "aria", "jenny", "zira", "female"]
-      : ["daniel", "david", "mark", "guy", "alex", "male"];
+      ? ["samantha", "victoria", "aria", "jenny", "zira", "ava", "susan", "female"]
+      : ["daniel", "david", "mark", "guy", "christopher", "eric", "ryan", "male"];
     const preferred = englishVoices.find((item) =>
       preferredNames.some((name) => item.name.toLowerCase().includes(name))
     );
     const fallback = englishVoices.find((item) => item.lang.toLowerCase() === "en-us") ?? englishVoices[0];
-    if (preferred || fallback) utterance.voice = preferred ?? fallback;
-    utterance.onstart = () => setIsPreviewingEnglish(true);
+    const selectedVoice = preferred ?? fallback;
+    if (selectedVoice) utterance.voice = selectedVoice;
+
+    utterance.onstart = () => {
+      setIsPreviewingEnglish(true);
+      setNotice(preferred
+        ? `Playing the installed English ${voice.toLowerCase()} voice: ${selectedVoice.name}.`
+        : `Your device does not expose a clearly labelled ${voice.toLowerCase()} English voice. Playing its default English voice instead.`);
+    };
     utterance.onend = () => setIsPreviewingEnglish(false);
     utterance.onerror = () => {
       setIsPreviewingEnglish(false);
@@ -717,7 +728,7 @@ export default function HomePage() {
             <label className="field-label">Video URL <span>Required</span><input value={sourceUrl} onChange={(event) => setSourceUrl(event.target.value)} placeholder="https://www.youtube.com/watch?v=..." type="url" required /></label>
             <div className="form-two-col"><label className="field-label">Recap style<select value={recapType} onChange={(event) => setRecapType(event.target.value as "review" | "full_recap")}><option value="review">Movie Review / Commentary</option><option value="full_recap">Full Movie Recap</option></select></label><label className="field-label">Narration language<select value={language} onChange={(event) => setLanguage(event.target.value as "Myanmar" | "English")}><option>Myanmar</option><option>English</option></select></label></div>
             <label className="field-label">Recap length<select value={duration} onChange={(event) => setDuration(event.target.value as "3 min" | "5 min" | "10 min")}><option>3 min</option><option>5 min</option><option>10 min</option></select></label>
-            <div className="field-label">Narrator voice</div><div className="voice-options"><button type="button" className={`voice-option ${voice === "Female" ? "selected" : ""}`} onClick={() => setVoice("Female")}><span className="voice-avatar">♀</span><span><strong>Female</strong><small>Warm narration</small></span><span className="radio-dot" /></button><button type="button" className={`voice-option ${voice === "Male" ? "selected" : ""}`} onClick={() => setVoice("Male")}><span className="voice-avatar male">♂</span><span><strong>Male</strong><small>Deep narration</small></span><span className="radio-dot" /></button></div><p className="modal-note">MyanmarTTS currently uses one built-in Burmese voice. The Male/Female setting is saved for future voice options but does not change this model's output yet.</p>
+            <div className="field-label">Narrator voice</div><div className="voice-options"><button type="button" className={`voice-option ${voice === "Female" ? "selected" : ""}`} onClick={() => setVoice("Female")}><span className="voice-avatar">♀</span><span><strong>Female</strong><small>Warm narration</small></span><span className="radio-dot" /></button><button type="button" className={`voice-option ${voice === "Male" ? "selected" : ""}`} onClick={() => setVoice("Male")}><span className="voice-avatar male">♂</span><span><strong>Male</strong><small>Deep narration</small></span><span className="radio-dot" /></button></div><p className="modal-note">{language === "English" ? "English: the selected Male/Female option chooses a matching voice installed on this device when available. Voice names and gender labels vary by browser and operating system, so a default English voice may be used if no match is available." : "Myanmar: MyanmarTTS currently provides one built-in Burmese voice. The Male/Female setting does not change Burmese audio yet."}</p>
             {(isGenerating || isGeneratingVoiceover) && (
               <p className="modal-note" role="status">
                 {isGeneratingVoiceover ? "AI is generating your voiceover. Keep this window open; do not submit again." : "AI is analyzing the YouTube video. Keep this window open; do not submit again."}
@@ -763,7 +774,7 @@ export default function HomePage() {
                 <button type="button" className="secondary-button" onClick={previewEnglishVoiceover} disabled={isGenerating || isGeneratingVoiceover}>
                   {isPreviewingEnglish ? "Stop English Preview ■" : "Preview English Voiceover →"}
                 </button>
-                <p className="modal-note">This first free test plays speech directly in your browser; it does not yet create or save an MP3/WAV file. The Female/Male choice selects a matching installed voice when available, otherwise it uses the device's default English voice.</p>
+                <p className="modal-note">Selected narrator: <strong>{voice}</strong>. Uses a separate installed English voice when your device provides one; it does not rely on pitch-shifting to imitate gender. If no matching voice is available, the device's default English voice is used. This browser preview does not save an MP3/WAV file.</p>
               </section>
             )}
             {generatedScript && selectedProject && selectedProject.language === "Myanmar" && (
