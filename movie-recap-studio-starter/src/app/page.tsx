@@ -185,8 +185,9 @@ export default function HomePage() {
 
   async function createProject(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (isGenerating) return;
+    if (isGenerating || isGeneratingVoiceover) return;
 
+    setVoiceoverUrl("");
     setFormError("");
     setGeneratedScript("");
 
@@ -308,6 +309,7 @@ export default function HomePage() {
           status: generateAfterSave ? "Analyzing" : "Draft",
           createdAt: new Date().toISOString(),
           script: null,
+          voiceoverPath: null,
         };
       }
 
@@ -728,7 +730,7 @@ export default function HomePage() {
             <div className="modal-note"><span>ⓘ</span><p>Save Project is free and only stores the YouTube link. Generate Recap Script sends the public video URL to Gemini's YouTube URL preview, which Google currently lists as no-charge. Free-tier rate limits and regional availability apply. Use media you own or are authorized to process.</p></div>
             <div className="modal-actions">
               <button type="button" className="cancel-button" onClick={() => setModalOpen(false)}>Close</button>
-              <button type="submit" name="action" value="save" className="secondary-button" disabled={isGenerating}>
+              <button type="submit" name="action" value="save" className="secondary-button" disabled={isGenerating || isGeneratingVoiceover}>
                 {selectedProject ? "Save Changes" : "Save Project"}
               </button>
               <button type="submit" name="action" value="generate" className="primary-button" disabled={isGenerating || isGeneratingVoiceover}>
