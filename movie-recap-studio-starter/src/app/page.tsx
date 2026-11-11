@@ -81,7 +81,7 @@ function isValidYouTubeUrl(value: string) {
 export default function HomePage() {
   const [projects, setProjects] = useState<RecapProject[]>([]);
   const [user, setUser] = useState<User | null>(null);
-  const [authLoading, setAuthLoading] = useState(isSupabaseConfigured);
+  const [authLoading, setAuthLoading] = useState(true);
   const [hydrated, setHydrated] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -103,6 +103,7 @@ export default function HomePage() {
       } catch {
         setNotice("Could not load saved projects from this browser.");
       } finally {
+        setAuthLoading(false);
         setHydrated(true);
       }
       return;
