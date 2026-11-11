@@ -146,7 +146,7 @@ function downloadBlob(blobUrl: string, filename: string) {
   anchor.click();
   anchor.remove();
 }
-\nfunction formatDate(value: string) {
+function formatDate(value: string) {
   return new Intl.DateTimeFormat("en", { month: "short", day: "numeric", year: "numeric" }).format(new Date(value));
 }
 
