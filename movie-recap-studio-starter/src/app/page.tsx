@@ -265,9 +265,24 @@ export default function HomePage() {
 
       setNotice("Analyzing the YouTube video and generating your recap script...");
 
+      let accessToken: string | null = null;
+      if (isSupabaseConfigured && supabase) {
+        const { data: sessionData, error: sessionError } =
+          await supabase.auth.getSession();
+        if (sessionError) throw new Error(sessionError.message);
+        accessToken = sessionData.session?.access_token ?? null;
+      }
+
+      if (!accessToken) {
+        throw new Error("Sign in to your Supabase account before generating a paid AI recap.");
+      }
+
       const response = await fetch("/api/generate-recap", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: "Bearer " + accessToken,
+        },
         body: JSON.stringify({
           title: projectTitle,
           videoUrl: sourceUrl.trim(),
