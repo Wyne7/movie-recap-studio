@@ -9,6 +9,42 @@ const OPENROUTER_TTS_URL = "https://openrouter.ai/api/v1/audio/speech";
 const TTS_MODEL = "google/gemini-3.8-flash-tts";
 const MAX_SCRIPT_CHARACTERS = 10_000;
 
+
+export async function GET(request: NextRequest) {
+  try {
+    const authorization = request.headers.get("authorization") || "";
+    const accessToken = authorization.startsWith("Bearer ") ? authorization.slice(7).trim() : "";
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    if (!accessToken || !supabaseUrl || !supabaseKey) {
+      return NextResponse.json({ success: false, error: "Sign in before opening a saved voiceover." }, { status: 401 });
+    }
+    const supabase = createClient(supabaseUrl, supabaseKey, {
+      global: { headers: { Authorization: "Bearer " + accessToken } },
+      auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+    });
+    const { data: authData, error: authError } = await supabase.auth.getUser(accessToken);
+    if (authError || !authData.user) {
+      return NextResponse.json({ success: false, error: "Your session is invalid or expired." }, { status: 401 });
+    }
+    const projectId = new URL(request.url).searchParams.get("projectId") || "";
+    const { data: project, error } = await supabase
+      .from("projects").select("id,voiceover_path")
+      .eq("id", projectId).eq("user_id", authData.user.id).single();
+    if (error || !project?.voiceover_path) {
+      return NextResponse.json({ success: false, error: "No saved voiceover exists for this project yet." }, { status: 404 });
+    }
+    const { data, error: signedError } = await supabase.storage.from("voiceovers")
+      .createSignedUrl(project.voiceover_path, 60 * 60);
+    if (signedError || !data?.signedUrl) {
+      return NextResponse.json({ success: false, error: "Could not open the saved voiceover." }, { status: 500 });
+    }
+    return NextResponse.json({ success: true, signedUrl: data.signedUrl });
+  } catch (error) {
+    return NextResponse.json({ success: false, error: error instanceof Error ? error.message : "Could not open the voiceover." }, { status: 500 });
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     const authorization = request.headers.get("authorization") || "";
