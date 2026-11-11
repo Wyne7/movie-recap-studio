@@ -6,7 +6,7 @@ export const runtime = "nodejs";
 export const maxDuration = 60;
 
 const OPENROUTER_TTS_URL = "https://openrouter.ai/api/v1/audio/speech";
-const TTS_MODEL = "google/gemini-3.8-flash-lite-tts";
+const TTS_MODEL = "google/gemini-3.8-flash-tts";
 const MAX_SCRIPT_CHARACTERS = 10_000;
 
 export async function POST(request: NextRequest) {
