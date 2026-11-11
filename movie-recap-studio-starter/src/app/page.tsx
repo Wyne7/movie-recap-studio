@@ -17,6 +17,7 @@ type RecapProject = {
   status: ProjectStatus;
   createdAt: string;
   script: string | null;
+  voiceoverPath: string | null;
 };
 
 const STORAGE_KEY = "movie-recap-studio.projects.v1";
@@ -32,6 +33,7 @@ type ProjectRow = {
   created_at: string;
   source_type: "youtube";
   script: string | null;
+  voiceover_path: string | null;
 };
 
 function fromProjectRow(row: ProjectRow): RecapProject {
@@ -41,6 +43,7 @@ function fromProjectRow(row: ProjectRow): RecapProject {
     sourceUrl: row.source_url,
     language: row.language,
     script: row.script ?? null,
+    voiceoverPath: row.voiceover_path ?? null,
     duration: row.duration,
     voice: row.voice,
     status: row.status,
@@ -98,6 +101,8 @@ export default function HomePage() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedScript, setGeneratedScript] = useState("");
   const [selectedProject, setSelectedProject] = useState<RecapProject | null>(null);
+  const [voiceoverUrl, setVoiceoverUrl] = useState("");
+  const [isGeneratingVoiceover, setIsGeneratingVoiceover] = useState(false);
 
   useEffect(() => {
     if (!isSupabaseConfigured) {
@@ -153,7 +158,7 @@ export default function HomePage() {
 
     void supabase
       .from("projects")
-      .select("id,title,source_url,source_type,language,duration,voice,status,created_at,script")
+      .select("id,title,source_url,source_type,language,duration,voice,status,created_at,script,voiceover_path")
       .order("created_at", { ascending: false })
       .then(({ data, error }) => {
         if (!active) return;
@@ -180,8 +185,9 @@ export default function HomePage() {
 
   async function createProject(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (isGenerating) return;
+    if (isGenerating || isGeneratingVoiceover) return;
 
+    setVoiceoverUrl("");
     setFormError("");
     setGeneratedScript("");
 
@@ -303,6 +309,7 @@ export default function HomePage() {
           status: generateAfterSave ? "Analyzing" : "Draft",
           createdAt: new Date().toISOString(),
           script: null,
+          voiceoverPath: null,
         };
       }
 
@@ -383,11 +390,11 @@ export default function HomePage() {
       }
 
       setGeneratedScript(script);
+      const scriptedProject = { ...savedProject, script, status: "Ready to edit" as ProjectStatus };
+      setSelectedProject(scriptedProject);
       setProjects((current) =>
         current.map((project) =>
-          project.id === savedProject?.id
-            ? { ...project, script, status: "Ready to edit" }
-            : project
+          project.id === savedProject?.id ? scriptedProject : project
         )
       );
 
@@ -499,8 +506,62 @@ export default function HomePage() {
     setDuration(project.duration);
     setVoice(project.voice);
     setGeneratedScript(project.script ?? "");
+    setVoiceoverUrl("");
     setFormError("");
+    if (project.voiceoverPath) {
+      void (async () => {
+        const supabase = getSupabaseBrowserClient();
+        const { data } = await supabase?.auth.getSession() ?? { data: { session: null } };
+        const token = data.session?.access_token;
+        if (!token) return;
+        const response = await fetch("/api/generate-voiceover?projectId=" + encodeURIComponent(project.id), {
+          headers: { Authorization: "Bearer " + token },
+        });
+        const result = await response.json().catch(() => null);
+        if (response.ok && result?.success && typeof result.signedUrl === "string") setVoiceoverUrl(result.signedUrl);
+      })();
+    }
     setModalOpen(true);
+  }
+
+
+  async function generateVoiceover() {
+    if (!selectedProject || !generatedScript.trim() || isGeneratingVoiceover) return;
+    const supabase = getSupabaseBrowserClient();
+    if (!supabase || !user) {
+      setFormError("Sign in before generating a voiceover.");
+      return;
+    }
+    setIsGeneratingVoiceover(true);
+    setFormError("");
+    setVoiceoverUrl("");
+    setNotice("Generating voiceover with OpenRouter. Please do not click again.");
+    try {
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError) throw new Error(sessionError.message);
+      const token = sessionData.session?.access_token;
+      if (!token) throw new Error("Your session expired. Please sign in again.");
+      const response = await fetch("/api/generate-voiceover", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+        body: JSON.stringify({ projectId: selectedProject.id }),
+      });
+      const result = await response.json().catch(() => null);
+      if (!response.ok || !result?.success || typeof result.signedUrl !== "string") {
+        throw new Error(result?.error || "Voiceover generation failed (" + response.status + ").");
+      }
+      setVoiceoverUrl(result.signedUrl);
+      const updated = { ...selectedProject, voiceoverPath: result.voiceoverPath };
+      setSelectedProject(updated);
+      setProjects((current) => current.map((p) => p.id === updated.id ? updated : p));
+      setNotice("Voiceover generated and saved privately. Open the audio player below to preview.");
+      window.setTimeout(() => setNotice(""), 7000);
+    } catch (error) {
+      setNotice("");
+      setFormError(error instanceof Error ? error.message : "Could not generate voiceover.");
+    } finally {
+      setIsGeneratingVoiceover(false);
+    }
   }
 
   async function deleteProject(id: string) {
@@ -570,7 +631,7 @@ export default function HomePage() {
             <button className="primary-button" onClick={() => { setSelectedProject(null); setTitle(""); setSourceUrl(""); setLanguage("Myanmar"); setDuration("5 min"); setVoice("Female"); setGeneratedScript(""); setFormError(""); setModalOpen(true); }}><span>＋</span> Create project</button>
           </div>
 
-          <div className="prototype-notice"><span className="notice-icon">ⓘ</span><span><strong>Foundation build</strong> — {isSupabaseConfigured ? "Your projects are saved in your private Supabase account." : "Draft projects are saved in this browser only. Configure Supabase to sync them across devices."} AI analysis, voice generation and video rendering are next.</span></div>
+          <div className="prototype-notice"><span className="notice-icon">ⓘ</span><span><strong>Foundation build</strong> — {isSupabaseConfigured ? "Your projects are saved in your private Supabase account." : "Draft projects are saved in this browser only. Configure Supabase to sync them across devices."} Voiceover generation is available for saved scripts; subtitles and video rendering are next.</span></div>
 
           <div className="stats-grid">
             <article className="stat-card"><div className="stat-top"><span>Total projects</span><span className="stat-icon purple">▦</span></div><div className="stat-number">{hydrated ? projects.length : "—"}</div><div className="stat-foot">In this browser workspace</div></article>
@@ -616,9 +677,9 @@ export default function HomePage() {
             <div className="form-two-col"><label className="field-label">Recap style<select value={recapType} onChange={(event) => setRecapType(event.target.value as "review" | "full_recap")}><option value="review">Movie Review / Commentary</option><option value="full_recap">Full Movie Recap</option></select></label><label className="field-label">Narration language<select value={language} onChange={(event) => setLanguage(event.target.value as "Myanmar" | "English")}><option>Myanmar</option><option>English</option></select></label></div>
             <label className="field-label">Recap length<select value={duration} onChange={(event) => setDuration(event.target.value as "3 min" | "5 min" | "10 min")}><option>3 min</option><option>5 min</option><option>10 min</option></select></label>
             <div className="field-label">Narrator voice</div><div className="voice-options"><button type="button" className={`voice-option ${voice === "Female" ? "selected" : ""}`} onClick={() => setVoice("Female")}><span className="voice-avatar">♀</span><span><strong>Female</strong><small>Warm narration</small></span><span className="radio-dot" /></button><button type="button" className={`voice-option ${voice === "Male" ? "selected" : ""}`} onClick={() => setVoice("Male")}><span className="voice-avatar male">♂</span><span><strong>Male</strong><small>Deep narration</small></span><span className="radio-dot" /></button></div>
-            {isGenerating && (
+            {(isGenerating || isGeneratingVoiceover) && (
               <p className="modal-note" role="status">
-                AI is analyzing the YouTube video. Keep this window open; do not submit again.
+                {isGeneratingVoiceover ? "AI is generating your voiceover. Keep this window open; do not submit again." : "AI is analyzing the YouTube video. Keep this window open; do not submit again."}
               </p>
             )}
             {selectedProject && !generatedScript && (
@@ -652,14 +713,27 @@ export default function HomePage() {
                 </pre>
               </section>
             )}
-            {formError && <p className="form-error" role="alert">{formError}</p>}
+            {generatedScript && selectedProject && (
+              <section style={{ border: "1px solid #e7e7ed", borderRadius: 9, padding: 13, display: "grid", gap: 10 }}>
+                <div>
+                  <h3 style={{ fontSize: 12, margin: "0 0 5px" }}>AI Voiceover · OpenRouter</h3>
+                  <p style={{ fontSize: 11, color: "#747484", margin: 0 }}>Burmese-capable model: Gemini 3.8 Flash TTS. Audio is saved in your private storage.</p>
+                </div>
+                {voiceoverUrl && <audio controls preload="none" src={voiceoverUrl} style={{ width: "100%" }}>Your browser does not support audio playback.</audio>}
+                <button type="button" className="secondary-button" onClick={generateVoiceover} disabled={isGenerating || isGeneratingVoiceover}>
+                  {isGeneratingVoiceover ? "Generating voiceover..." : selectedProject.voiceoverPath ? "Regenerate Voiceover" : "Generate Voiceover →"}
+                </button>
+                {isGeneratingVoiceover && <p className="modal-note">One paid voice generation request is running. Please wait and do not click again.</p>}
+              </section>
+            )}
+                        {formError && <p className="form-error" role="alert">{formError}</p>}
             <div className="modal-note"><span>ⓘ</span><p>Save Project is free and only stores the YouTube link. Generate Recap Script sends the public video URL to Gemini's YouTube URL preview, which Google currently lists as no-charge. Free-tier rate limits and regional availability apply. Use media you own or are authorized to process.</p></div>
             <div className="modal-actions">
               <button type="button" className="cancel-button" onClick={() => setModalOpen(false)}>Close</button>
-              <button type="submit" name="action" value="save" className="secondary-button" disabled={isGenerating}>
+              <button type="submit" name="action" value="save" className="secondary-button" disabled={isGenerating || isGeneratingVoiceover}>
                 {selectedProject ? "Save Changes" : "Save Project"}
               </button>
-              <button type="submit" name="action" value="generate" className="primary-button" disabled={isGenerating}>
+              <button type="submit" name="action" value="generate" className="primary-button" disabled={isGenerating || isGeneratingVoiceover}>
                 {isGenerating ? "Analyzing..." : selectedProject?.script ? "Regenerate Recap Script →" : "Generate Recap Script →"}
               </button>
             </div>
