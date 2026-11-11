@@ -16,6 +16,7 @@ type RecapProject = {
   voice: "Female" | "Male";
   status: ProjectStatus;
   createdAt: string;
+  script: string | null;
 };
 
 const STORAGE_KEY = "movie-recap-studio.projects.v1";
@@ -29,6 +30,8 @@ type ProjectRow = {
   voice: "Female" | "Male";
   status: ProjectStatus;
   created_at: string;
+  source_type: "youtube";
+  script: string | null;
 };
 
 function fromProjectRow(row: ProjectRow): RecapProject {
@@ -37,6 +40,7 @@ function fromProjectRow(row: ProjectRow): RecapProject {
     title: row.title,
     sourceUrl: row.source_url,
     language: row.language,
+    script: row.script ?? null,
     duration: row.duration,
     voice: row.voice,
     status: row.status,
@@ -48,10 +52,27 @@ function formatDate(value: string) {
   return new Intl.DateTimeFormat("en", { month: "short", day: "numeric", year: "numeric" }).format(new Date(value));
 }
 
-function isValidHttpUrl(value: string) {
+function isValidYouTubeUrl(value: string) {
   try {
     const parsed = new URL(value);
-    return parsed.protocol === "https:" || parsed.protocol === "http:";
+    const hostname = parsed.hostname.toLowerCase().replace(/^www\./, "");
+
+    if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+      return false;
+    }
+
+    if (hostname === "youtu.be") {
+      return parsed.pathname.length > 1;
+    }
+
+    if (hostname === "youtube.com" || hostname === "m.youtube.com") {
+      return (
+        (parsed.pathname === "/watch" && Boolean(parsed.searchParams.get("v"))) ||
+        /^\/(shorts|embed|live)\/[^/]+/.test(parsed.pathname)
+      );
+    }
+
+    return false;
   } catch {
     return false;
   }
@@ -71,6 +92,8 @@ export default function HomePage() {
   const [duration, setDuration] = useState<"3 min" | "5 min" | "10 min">("5 min");
   const [voice, setVoice] = useState<"Female" | "Male">("Female");
   const [formError, setFormError] = useState("");
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [generatedScript, setGeneratedScript] = useState("");
 
   useEffect(() => {
     if (!isSupabaseConfigured) {
@@ -125,7 +148,7 @@ export default function HomePage() {
 
     void supabase
       .from("projects")
-      .select("id,title,source_url,language,duration,voice,status,created_at")
+      .select("id,title,source_url,source_type,language,duration,voice,status,created_at,script")
       .order("created_at", { ascending: false })
       .then(({ data, error }) => {
         if (!active) return;
@@ -152,59 +175,178 @@ export default function HomePage() {
 
   async function createProject(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (isGenerating) return;
+
     setFormError("");
-    if (!isValidHttpUrl(sourceUrl.trim())) {
-      setFormError("Enter a valid http:// or https:// video URL.");
+    setGeneratedScript("");
+
+    const submitter = (event.nativeEvent as SubmitEvent)
+      .submitter as HTMLButtonElement | null;
+    const generateAfterSave = submitter?.value === "generate";
+
+    if (!isValidYouTubeUrl(sourceUrl.trim())) {
+      setFormError("Enter a valid YouTube video URL.");
       return;
     }
 
     const projectTitle = title.trim() || "Untitled movie recap";
-    if (isSupabaseConfigured) {
-      const supabase = getSupabaseBrowserClient();
-      if (!supabase || !user) {
-        setFormError("Please sign in again before saving this project.");
-        return;
-      }
-      const { data, error } = await supabase
-        .from("projects")
-        .insert({
-          user_id: user.id,
+    const supabase = getSupabaseBrowserClient();
+
+    if (isSupabaseConfigured && (!supabase || !user)) {
+      setFormError("Please sign in again before saving this project.");
+      return;
+    }
+
+    let savedProject: RecapProject | null = null;
+
+    try {
+      if (generateAfterSave) setIsGenerating(true);
+
+      // Save the project once. Generating is a separate, explicitly paid action.
+      if (isSupabaseConfigured && supabase && user) {
+        const { data, error } = await supabase
+          .from("projects")
+          .insert({
+            user_id: user.id,
+            title: projectTitle,
+            source_type: "youtube",
+            source_url: sourceUrl.trim(),
+            storage_path: null,
+            language,
+            duration,
+            voice,
+            status: generateAfterSave ? "Analyzing" : "Draft",
+            script: null,
+          })
+          .select(
+            "id,title,source_url,source_type,language,duration,voice,status,created_at,script"
+          )
+          .single();
+
+        if (error) {
+          throw new Error("Could not save project: " + error.message);
+        }
+
+        savedProject = fromProjectRow(data as ProjectRow);
+      } else {
+        savedProject = {
+          id:
+            typeof crypto !== "undefined" && "randomUUID" in crypto
+              ? crypto.randomUUID()
+              : String(Date.now()),
           title: projectTitle,
-          source_url: sourceUrl.trim(),
+          sourceUrl: sourceUrl.trim(),
           language,
           duration,
           voice,
-          status: "Draft",
-        })
-        .select("id,title,source_url,language,duration,voice,status,created_at")
-        .single();
-      if (error) {
-        setFormError(`Could not save project: ${error.message}`);
+          status: generateAfterSave ? "Analyzing" : "Draft",
+          createdAt: new Date().toISOString(),
+          script: null,
+        };
+      }
+
+      setProjects((current) => [savedProject as RecapProject, ...current]);
+
+      if (!generateAfterSave) {
+        setTitle("");
+        setSourceUrl("");
+        setLanguage("Myanmar");
+        setDuration("5 min");
+        setVoice("Female");
+        setModalOpen(false);
+        setNotice(
+          isSupabaseConfigured
+            ? "Project saved securely. Saving a project does not call the AI or incur model usage."
+            : "Project saved as a local draft."
+        );
+        window.setTimeout(() => setNotice(""), 5500);
         return;
       }
-      setProjects((current) => [fromProjectRow(data as ProjectRow), ...current]);
-    } else {
-      const project: RecapProject = {
-        id: typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `${Date.now()}`,
-        title: projectTitle,
-        sourceUrl: sourceUrl.trim(),
-        language,
-        duration,
-        voice,
-        status: "Draft",
-        createdAt: new Date().toISOString(),
-      };
-      setProjects((current) => [project, ...current]);
-    }
 
-    setTitle("");
-    setSourceUrl("");
-    setLanguage("Myanmar");
-    setDuration("5 min");
-    setVoice("Female");
-    setModalOpen(false);
-    setNotice(isSupabaseConfigured ? "Project saved securely to your Supabase account." : "Project saved as a local draft. Connect Supabase to sync it across devices.");
-    window.setTimeout(() => setNotice(""), 5500);
+      setNotice("Analyzing the YouTube video and generating your recap script...");
+
+      const response = await fetch("/api/generate-recap", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: projectTitle,
+          videoUrl: sourceUrl.trim(),
+          language,
+          duration,
+        }),
+      });
+
+      const result = await response.json().catch(() => null);
+
+      if (!response.ok || !result?.success || typeof result.script !== "string") {
+        throw new Error(
+          result?.error || "AI generation failed (" + response.status + ")."
+        );
+      }
+
+      const script = result.script.trim();
+      if (!script) throw new Error("The AI returned an empty recap script.");
+
+      // Save the completed script so reopening the project does not require another paid call.
+      if (isSupabaseConfigured && supabase && user) {
+        const { error: updateError } = await supabase
+          .from("projects")
+          .update({
+            script,
+            status: "Ready to edit",
+          })
+          .eq("id", savedProject.id)
+          .eq("user_id", user.id);
+
+        if (updateError) {
+          throw new Error(
+            "Script was generated but could not be saved: " + updateError.message
+          );
+        }
+      }
+
+      setGeneratedScript(script);
+      setProjects((current) =>
+        current.map((project) =>
+          project.id === savedProject?.id
+            ? { ...project, script, status: "Ready to edit" }
+            : project
+        )
+      );
+
+      const actualCost =
+        typeof result.usageCost === "number"
+          ? " Estimated provider usage: $" + result.usageCost.toFixed(6) + "."
+          : "";
+
+      setNotice("Recap script generated and saved." + actualCost);
+      window.setTimeout(() => setNotice(""), 7000);
+    } catch (caught) {
+      if (savedProject) {
+        if (isSupabaseConfigured && supabase && user) {
+          await supabase
+            .from("projects")
+            .update({ status: "Draft" })
+            .eq("id", savedProject.id)
+            .eq("user_id", user.id);
+        }
+
+        setProjects((current) =>
+          current.map((project) =>
+            project.id === savedProject?.id
+              ? { ...project, status: "Draft" }
+              : project
+          )
+        );
+      }
+
+      setFormError(
+        caught instanceof Error ? caught.message : "Something went wrong."
+      );
+      setNotice("");
+    } finally {
+      setIsGenerating(false);
+    }
   }
 
   async function deleteProject(id: string) {
@@ -242,7 +384,7 @@ export default function HomePage() {
         <div className="side-label">WORKSPACE</div>
         <nav className="side-nav" aria-label="Main navigation">
           <a className="nav-link active" href="#home"><span className="nav-icon">▦</span> Overview</a>
-          <button className="nav-link" onClick={() => setModalOpen(true)}><span className="nav-icon">＋</span> New project</button>
+          <button className="nav-link" onClick={() => { setGeneratedScript(""); setFormError(""); setModalOpen(true); }}><span className="nav-icon">＋</span> New project</button>
         </nav>
         <div className="sidebar-bottom">
           <div className="help-card">
@@ -271,7 +413,7 @@ export default function HomePage() {
               <h1>Make every story <em>worth sharing.</em></h1>
               <p className="page-subtitle">Create clear, engaging movie recaps with narration and subtitles.</p>
             </div>
-            <button className="primary-button" onClick={() => setModalOpen(true)}><span>＋</span> Create project</button>
+            <button className="primary-button" onClick={() => { setGeneratedScript(""); setFormError(""); setModalOpen(true); }}><span>＋</span> Create project</button>
           </div>
 
           <div className="prototype-notice"><span className="notice-icon">ⓘ</span><span><strong>Foundation build</strong> — {isSupabaseConfigured ? "Your projects are saved in your private Supabase account." : "Draft projects are saved in this browser only. Configure Supabase to sync them across devices."} AI analysis, voice generation and video rendering are next.</span></div>
@@ -290,7 +432,7 @@ export default function HomePage() {
                 <div className="empty-art"><span className="art-spark">✦</span><span className="art-play">▶</span><span className="art-line" /></div>
                 <h3>{projects.length === 0 ? "Your first recap starts here" : "No matching projects"}</h3>
                 <p>{projects.length === 0 ? "Add a video link to create your first movie recap project." : "Try another title or clear your search."}</p>
-                {projects.length === 0 && <button className="secondary-button" onClick={() => setModalOpen(true)}>Create your first project <span>→</span></button>}
+                {projects.length === 0 && <button className="secondary-button" onClick={() => { setGeneratedScript(""); setFormError(""); setModalOpen(true); }}>Create your first project <span>→</span></button>}
                 {projects.length > 0 && <button className="secondary-button" onClick={() => setSearch("")}>Clear search</button>}
               </div>
             ) : (
@@ -319,9 +461,48 @@ export default function HomePage() {
             <label className="field-label">Video URL <span>Required</span><input value={sourceUrl} onChange={(event) => setSourceUrl(event.target.value)} placeholder="https://www.youtube.com/watch?v=..." type="url" required /></label>
             <div className="form-two-col"><label className="field-label">Narration language<select value={language} onChange={(event) => setLanguage(event.target.value as "Myanmar" | "English")}><option>Myanmar</option><option>English</option></select></label><label className="field-label">Recap length<select value={duration} onChange={(event) => setDuration(event.target.value as "3 min" | "5 min" | "10 min")}><option>3 min</option><option>5 min</option><option>10 min</option></select></label></div>
             <div className="field-label">Narrator voice</div><div className="voice-options"><button type="button" className={`voice-option ${voice === "Female" ? "selected" : ""}`} onClick={() => setVoice("Female")}><span className="voice-avatar">♀</span><span><strong>Female</strong><small>Warm narration</small></span><span className="radio-dot" /></button><button type="button" className={`voice-option ${voice === "Male" ? "selected" : ""}`} onClick={() => setVoice("Male")}><span className="voice-avatar male">♂</span><span><strong>Male</strong><small>Deep narration</small></span><span className="radio-dot" /></button></div>
+            {isGenerating && (
+              <p className="modal-note" role="status">
+                AI is analyzing the YouTube video. Keep this window open; do not submit again.
+              </p>
+            )}
+            {generatedScript && (
+              <section
+                aria-live="polite"
+                style={{
+                  border: "1px solid #e7e7ed",
+                  borderRadius: 9,
+                  padding: 13,
+                  maxHeight: 300,
+                  overflowY: "auto",
+                }}
+              >
+                <h3 style={{ fontSize: 12, margin: "0 0 9px" }}>Generated recap script</h3>
+                <pre
+                  style={{
+                    whiteSpace: "pre-wrap",
+                    overflowWrap: "anywhere",
+                    fontFamily: "inherit",
+                    fontSize: 11,
+                    lineHeight: 1.7,
+                    margin: 0,
+                  }}
+                >
+                  {generatedScript}
+                </pre>
+              </section>
+            )}
             {formError && <p className="form-error" role="alert">{formError}</p>}
-            <div className="modal-note"><span>ⓘ</span><p>{isSupabaseConfigured ? "This project will be saved to your private Supabase account. AI analysis and generation will be connected next." : "For this preview, the project is saved in this browser only. Connect Supabase to store projects in the cloud."}</p></div>
-            <div className="modal-actions"><button type="button" className="cancel-button" onClick={() => setModalOpen(false)}>Cancel</button><button type="submit" className="primary-button">Save project <span>→</span></button></div>
+            <div className="modal-note"><span>ⓘ</span><p>Save Project is free and only stores the YouTube link. Generate Recap Script sends the public video URL to a paid AI model; charges vary by video and output length. Generate only when you are ready. Use media you own or are authorized to process.</p></div>
+            <div className="modal-actions">
+              <button type="button" className="cancel-button" onClick={() => setModalOpen(false)}>Close</button>
+              <button type="submit" name="action" value="save" className="secondary-button" disabled={isGenerating}>
+                Save Project
+              </button>
+              <button type="submit" name="action" value="generate" className="primary-button" disabled={isGenerating}>
+                {isGenerating ? "Analyzing..." : "Generate Recap Script →"}
+              </button>
+            </div>
           </form>
         </section>
       </div>}
