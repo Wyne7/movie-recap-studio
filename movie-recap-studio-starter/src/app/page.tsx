@@ -509,7 +509,7 @@ export default function HomePage() {
               </section>
             )}
             {formError && <p className="form-error" role="alert">{formError}</p>}
-            <div className="modal-note"><span>ⓘ</span><p>Save Project is free and only stores the YouTube link. Generate Recap Script sends the public video URL to a paid AI model; charges vary by video and output length. Generate only when you are ready. Use media you own or are authorized to process.</p></div>
+            <div className="modal-note"><span>ⓘ</span><p>Save Project is free and only stores the YouTube link. Generate Recap Script sends the public video URL to Gemini's YouTube URL preview, which Google currently lists as no-charge. Free-tier rate limits and regional availability apply. Use media you own or are authorized to process.</p></div>
             <div className="modal-actions">
               <button type="button" className="cancel-button" onClick={() => setModalOpen(false)}>Close</button>
               <button type="submit" name="action" value="save" className="secondary-button" disabled={isGenerating}>
