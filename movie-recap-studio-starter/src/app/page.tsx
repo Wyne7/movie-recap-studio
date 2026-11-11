@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import type { User } from "@supabase/supabase-js";
+import type { HeadTTS as HeadTTSClient } from "@met4citizen/headtts";
 import { AuthPanel } from "@/components/auth-panel";
 import { getSupabaseBrowserClient, isSupabaseConfigured } from "@/lib/supabase/client";
 
@@ -51,7 +52,100 @@ function fromProjectRow(row: ProjectRow): RecapProject {
   };
 }
 
-function formatDate(value: string) {
+
+type TimedWord = { text: string; start: number; end: number };
+
+function audioBuffersToWav(buffers: AudioBuffer[]): Blob {
+  if (buffers.length === 0) throw new Error("The voice engine did not return audio.");
+  const sampleRate = buffers[0].sampleRate;
+  const channels = buffers[0].numberOfChannels;
+  const totalFrames = buffers.reduce((sum, buffer) => sum + buffer.length, 0);
+  const bytesPerSample = 2;
+  const blockAlign = channels * bytesPerSample;
+  const dataSize = totalFrames * blockAlign;
+  const output = new ArrayBuffer(44 + dataSize);
+  const view = new DataView(output);
+  const writeText = (offset: number, value: string) => {
+    for (let i = 0; i < value.length; i += 1) view.setUint8(offset + i, value.charCodeAt(i));
+  };
+
+  writeText(0, "RIFF");
+  view.setUint32(4, 36 + dataSize, true);
+  writeText(8, "WAVE");
+  writeText(12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, channels, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * blockAlign, true);
+  view.setUint16(32, blockAlign, true);
+  view.setUint16(34, 16, true);
+  writeText(36, "data");
+  view.setUint32(40, dataSize, true);
+
+  let outputFrame = 0;
+  for (const buffer of buffers) {
+    for (let frame = 0; frame < buffer.length; frame += 1) {
+      for (let channel = 0; channel < channels; channel += 1) {
+        const sample = Math.max(-1, Math.min(1, buffer.getChannelData(channel)[frame]));
+        const value = sample < 0 ? sample * 32768 : sample * 32767;
+        view.setInt16(44 + (outputFrame * channels + channel) * bytesPerSample, value, true);
+      }
+      outputFrame += 1;
+    }
+  }
+  return new Blob([output], { type: "audio/wav" });
+}
+
+function formatSrtTime(milliseconds: number): string {
+  const safe = Math.max(0, Math.round(milliseconds));
+  const hours = Math.floor(safe / 3600000);
+  const minutes = Math.floor((safe % 3600000) / 60000);
+  const seconds = Math.floor((safe % 60000) / 1000);
+  const millis = safe % 1000;
+  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")},${String(millis).padStart(3, "0")}`;
+}
+
+function timedWordsToSrt(words: TimedWord[]): string {
+  const cues: Array<{ text: string; start: number; end: number }> = [];
+  let current: TimedWord[] = [];
+  const flush = () => {
+    if (!current.length) return;
+    cues.push({
+      text: current.map((word) => word.text).join(" ").replace(/\\s+([,.;!?])/g, "$1"),
+      start: current[0].start,
+      end: Math.max(current[0].start + 250, current[current.length - 1].end),
+    });
+    current = [];
+  };
+
+  for (const word of words) {
+    current.push(word);
+    const text = current.map((item) => item.text).join(" ");
+    const last = word.text.trim();
+    if (
+      current.length >= 7 ||
+      text.length >= 44 ||
+      /[.!?]["')\\]]?$/.test(last) ||
+      word.end - current[0].start >= 4500
+    ) flush();
+  }
+  flush();
+
+  return cues.map((cue, index) =>
+    `${index + 1}\\n${formatSrtTime(cue.start)} --> ${formatSrtTime(cue.end)}\\n${cue.text}`
+  ).join("\\n\\n") + "\\n";
+}
+
+function downloadBlob(blobUrl: string, filename: string) {
+  const anchor = document.createElement("a");
+  anchor.href = blobUrl;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+}
+\nfunction formatDate(value: string) {
   return new Intl.DateTimeFormat("en", { month: "short", day: "numeric", year: "numeric" }).format(new Date(value));
 }
 
@@ -104,6 +198,11 @@ export default function HomePage() {
   const [voiceoverUrl, setVoiceoverUrl] = useState("");
   const [isGeneratingVoiceover, setIsGeneratingVoiceover] = useState(false);
   const [isPreviewingEnglish, setIsPreviewingEnglish] = useState(false);
+  const [isGeneratingEnglishAudio, setIsGeneratingEnglishAudio] = useState(false);
+  const [englishAudioUrl, setEnglishAudioUrl] = useState("");
+  const [englishSrtUrl, setEnglishSrtUrl] = useState("");
+  const [englishProgress, setEnglishProgress] = useState("");
+  const headTtsRef = useRef<HeadTTSClient | null>(null);
 
   useEffect(() => {
     if (!isSupabaseConfigured) {
@@ -616,6 +715,119 @@ export default function HomePage() {
     window.speechSynthesis.speak(utterance);
   }
 
+
+  async function generateEnglishAudioAndSubtitles() {
+    const script = generatedScript.trim();
+    if (!script || !selectedProject || selectedProject.language !== "English") {
+      setFormError("Open an English project with a generated script first.");
+      return;
+    }
+    if (isGeneratingEnglishAudio) return;
+
+    setIsGeneratingEnglishAudio(true);
+    setFormError("");
+    setEnglishProgress("Loading the free Kokoro voice model. The first load may take a few minutes...");
+    setNotice("");
+
+    try {
+      let engine = headTtsRef.current;
+      if (!engine) {
+        const { HeadTTS } = await import("@met4citizen/headtts");
+        const voiceId = voice === "Female" ? "af_heart" : "am_michael";
+        engine = new HeadTTS({
+          endpoints: ["webgpu", "wasm"],
+          workerModule: "https://cdn.jsdelivr.net/npm/@met4citizen/headtts@1.4.0/modules/worker-tts.mjs",
+          dictionaryURL: "https://cdn.jsdelivr.net/npm/@met4citizen/headtts@1.4.0/dictionaries/",
+          voices: [voiceId],
+          defaultVoice: voiceId,
+          defaultLanguage: "en-us",
+          defaultSpeed: 0.96,
+          defaultAudioEncoding: "wav",
+          dtypeWebgpu: "q8",
+          dtypeWasm: "q4",
+          splitSentences: true,
+          splitLength: 450,
+        });
+        await engine.connect(null, (event) => {
+          if (event.total > 0) {
+            setEnglishProgress(`Downloading voice model: ${Math.round((event.loaded / event.total) * 100)}%`);
+          } else {
+            setEnglishProgress("Loading voice model...");
+          }
+        });
+        headTtsRef.current = engine;
+      }
+
+      setEnglishProgress(`Generating ${voice.toLowerCase()} English voice and matching subtitle timings...`);
+      await engine.setup({
+        voice: voice === "Female" ? "af_heart" : "am_michael",
+        language: "en-us",
+        speed: 0.96,
+        audioEncoding: "wav",
+      });
+      const messages = await engine.synthesize({ input: script });
+      const audioMessages = messages.filter((message) =>
+        message.type === "audio" && message.data?.audio instanceof AudioBuffer
+      );
+      const failedMessage = messages.find((message) => message.type === "error");
+      if (audioMessages.length === 0) {
+        throw new Error(failedMessage?.data?.error || "The voice model did not return an audio file. Please try again.");
+      }
+
+      const buffers = audioMessages.map((message) => message.data!.audio as AudioBuffer);
+      const timedWords: TimedWord[] = [];
+      let offsetMs = 0;
+      for (const message of audioMessages) {
+        const data = message.data;
+        const audio = data?.audio as AudioBuffer;
+        const words = data?.words ?? [];
+        const starts = data?.wtimes ?? [];
+        const durations = data?.wdurations ?? [];
+        for (let index = 0; index < words.length; index += 1) {
+          const text = words[index]?.trim();
+          if (!text) continue;
+          const start = offsetMs + (starts[index] ?? 0);
+          timedWords.push({
+            text,
+            start,
+            end: start + Math.max(120, durations[index] ?? 300),
+          });
+        }
+        offsetMs += audio.duration * 1000;
+      }
+      if (timedWords.length === 0) {
+        throw new Error("Audio was generated, but word timing data was missing. Please try again.");
+      }
+
+      const wavBlob = audioBuffersToWav(buffers);
+      const srtBlob = new Blob([timedWordsToSrt(timedWords)], { type: "text/plain;charset=utf-8" });
+      if (englishAudioUrl) URL.revokeObjectURL(englishAudioUrl);
+      if (englishSrtUrl) URL.revokeObjectURL(englishSrtUrl);
+      setEnglishAudioUrl(URL.createObjectURL(wavBlob));
+      setEnglishSrtUrl(URL.createObjectURL(srtBlob));
+      setEnglishProgress("");
+      setNotice("English WAV voiceover and audio-timed SRT subtitles are ready to preview and download.");
+    } catch (error) {
+      headTtsRef.current = null;
+      setEnglishProgress("");
+      setFormError(error instanceof Error ? error.message : "Could not generate English voiceover and subtitles.");
+    } finally {
+      setIsGeneratingEnglishAudio(false);
+    }
+  }
+
+  function downloadEnglishAudio() {
+    if (!englishAudioUrl) return;
+    const safeTitle = (selectedProject?.title || "movie-recap").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+    downloadBlob(englishAudioUrl, `${safeTitle || "movie-recap"}-voiceover.wav`);
+  }
+
+  function downloadEnglishSubtitles() {
+    if (!englishSrtUrl) return;
+    const safeTitle = (selectedProject?.title || "movie-recap").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+    downloadBlob(englishSrtUrl, `${safeTitle || "movie-recap"}-subtitles.srt`);
+  }
+
   async function deleteProject(id: string) {
     if (isSupabaseConfigured) {
       const supabase = getSupabaseBrowserClient();
@@ -768,13 +980,26 @@ export default function HomePage() {
             {generatedScript && selectedProject && selectedProject.language === "English" && (
               <section style={{ border: "1px solid #e7e7ed", borderRadius: 9, padding: 13, display: "grid", gap: 10 }}>
                 <div>
-                  <h3 style={{ fontSize: 12, margin: "0 0 5px" }}>English Voiceover · Free on this device</h3>
-                  <p style={{ fontSize: 11, color: "#747484", margin: 0 }}>Uses the built-in speech engine in Android Chrome and desktop Chrome/Edge. No API key, credits, or hosting required. Available voices and sound quality depend on the device. Keep this page open while it speaks.</p>
+                  <h3 style={{ fontSize: 12, margin: "0 0 5px" }}>English AI Voiceover + Timed Subtitles</h3>
+                  <p style={{ fontSize: 11, color: "#747484", margin: 0 }}>Free, open-source Kokoro voice generation runs in this browser. Choose Male or Female in the project settings. The first use downloads the voice model; keep this page open until generation finishes.</p>
                 </div>
-                <button type="button" className="secondary-button" onClick={previewEnglishVoiceover} disabled={isGenerating || isGeneratingVoiceover}>
-                  {isPreviewingEnglish ? "Stop English Preview ■" : "Preview English Voiceover →"}
+                <button type="button" className="secondary-button" onClick={generateEnglishAudioAndSubtitles} disabled={isGenerating || isGeneratingVoiceover || isGeneratingEnglishAudio}>
+                  {isGeneratingEnglishAudio ? "Generating English voice + subtitles..." : "Generate English WAV + SRT →"}
                 </button>
-                <p className="modal-note">Selected narrator: <strong>{voice}</strong>. Uses a separate installed English voice when your device provides one; it does not rely on pitch-shifting to imitate gender. If no matching voice is available, the device's default English voice is used. This browser preview does not save an MP3/WAV file.</p>
+                {isGeneratingEnglishAudio && <p className="modal-note" role="status">{englishProgress || "Preparing voice model..."}</p>}
+                {englishAudioUrl && (
+                  <div style={{ display: "grid", gap: 9 }}>
+                    <audio controls preload="metadata" src={englishAudioUrl} style={{ width: "100%" }}>Your browser does not support audio playback.</audio>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                      <button type="button" className="secondary-button" onClick={downloadEnglishAudio}>Download WAV</button>
+                      <button type="button" className="secondary-button" onClick={downloadEnglishSubtitles}>Download SRT subtitles</button>
+                    </div>
+                  </div>
+                )}
+                <p className="modal-note">Narrator: <strong>{voice}</strong> · {voice === "Female" ? "American English — Heart" : "American English — Michael"}. Subtitle timing comes from the generated speech timestamps. This creates downloadable files locally; it does not upload them to your account.</p>
+                <button type="button" className="secondary-button" onClick={previewEnglishVoiceover} disabled={isGenerating || isGeneratingVoiceover || isGeneratingEnglishAudio}>
+                  {isPreviewingEnglish ? "Stop quick device preview ■" : "Quick preview using device voice"}
+                </button>
               </section>
             )}
             {generatedScript && selectedProject && selectedProject.language === "Myanmar" && (
