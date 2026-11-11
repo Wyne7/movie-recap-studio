@@ -535,7 +535,7 @@ export default function HomePage() {
     setIsGeneratingVoiceover(true);
     setFormError("");
     setVoiceoverUrl("");
-    setNotice("Generating voiceover with OpenRouter. Please do not click again.");
+    setNotice("Generating Burmese voiceover with MyanmarTTS. The free CPU service may take a few minutes; please do not click again.");
     try {
       const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
       if (sessionError) throw new Error(sessionError.message);
@@ -676,7 +676,7 @@ export default function HomePage() {
             <label className="field-label">Video URL <span>Required</span><input value={sourceUrl} onChange={(event) => setSourceUrl(event.target.value)} placeholder="https://www.youtube.com/watch?v=..." type="url" required /></label>
             <div className="form-two-col"><label className="field-label">Recap style<select value={recapType} onChange={(event) => setRecapType(event.target.value as "review" | "full_recap")}><option value="review">Movie Review / Commentary</option><option value="full_recap">Full Movie Recap</option></select></label><label className="field-label">Narration language<select value={language} onChange={(event) => setLanguage(event.target.value as "Myanmar" | "English")}><option>Myanmar</option><option>English</option></select></label></div>
             <label className="field-label">Recap length<select value={duration} onChange={(event) => setDuration(event.target.value as "3 min" | "5 min" | "10 min")}><option>3 min</option><option>5 min</option><option>10 min</option></select></label>
-            <div className="field-label">Narrator voice</div><div className="voice-options"><button type="button" className={`voice-option ${voice === "Female" ? "selected" : ""}`} onClick={() => setVoice("Female")}><span className="voice-avatar">♀</span><span><strong>Female</strong><small>Warm narration</small></span><span className="radio-dot" /></button><button type="button" className={`voice-option ${voice === "Male" ? "selected" : ""}`} onClick={() => setVoice("Male")}><span className="voice-avatar male">♂</span><span><strong>Male</strong><small>Deep narration</small></span><span className="radio-dot" /></button></div>
+            <div className="field-label">Narrator voice</div><div className="voice-options"><button type="button" className={`voice-option ${voice === "Female" ? "selected" : ""}`} onClick={() => setVoice("Female")}><span className="voice-avatar">♀</span><span><strong>Female</strong><small>Warm narration</small></span><span className="radio-dot" /></button><button type="button" className={`voice-option ${voice === "Male" ? "selected" : ""}`} onClick={() => setVoice("Male")}><span className="voice-avatar male">♂</span><span><strong>Male</strong><small>Deep narration</small></span><span className="radio-dot" /></button></div><p className="modal-note">MyanmarTTS currently uses one built-in Burmese voice. The Male/Female setting is saved for future voice options but does not change this model's output yet.</p>
             {(isGenerating || isGeneratingVoiceover) && (
               <p className="modal-note" role="status">
                 {isGeneratingVoiceover ? "AI is generating your voiceover. Keep this window open; do not submit again." : "AI is analyzing the YouTube video. Keep this window open; do not submit again."}
@@ -716,14 +716,14 @@ export default function HomePage() {
             {generatedScript && selectedProject && (
               <section style={{ border: "1px solid #e7e7ed", borderRadius: 9, padding: 13, display: "grid", gap: 10 }}>
                 <div>
-                  <h3 style={{ fontSize: 12, margin: "0 0 5px" }}>AI Voiceover · OpenRouter</h3>
-                  <p style={{ fontSize: 11, color: "#747484", margin: 0 }}>Burmese-capable model: Gemini 3.8 Flash TTS. Audio is saved in your private storage.</p>
+                  <h3 style={{ fontSize: 12, margin: "0 0 5px" }}>Myanmar Voiceover · Open Source</h3>
+                  <p style={{ fontSize: 11, color: "#747484", margin: 0 }}>MyanmarTTS open-source Burmese model. Audio is saved in your private storage. The free CPU host may sleep between uses.</p>
                 </div>
                 {voiceoverUrl && <audio controls preload="none" src={voiceoverUrl} style={{ width: "100%" }}>Your browser does not support audio playback.</audio>}
                 <button type="button" className="secondary-button" onClick={generateVoiceover} disabled={isGenerating || isGeneratingVoiceover}>
                   {isGeneratingVoiceover ? "Generating voiceover..." : selectedProject.voiceoverPath ? "Regenerate Voiceover" : "Generate Voiceover →"}
                 </button>
-                {isGeneratingVoiceover && <p className="modal-note">One paid voice generation request is running. Please wait and do not click again.</p>}
+                {isGeneratingVoiceover && <p className="modal-note">One voice generation request is running. The first request may take longer while the free service wakes up.</p>}
               </section>
             )}
                         {formError && <p className="form-error" role="alert">{formError}</p>}

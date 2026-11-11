@@ -67,19 +67,29 @@ If `NEXT_PUBLIC_SUPABASE_URL` or `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` is missi
 
 This milestone saves project metadata only. It does not yet analyze video, generate narration, time subtitles, upload source files, or render MP4 files. Those are the next milestones.
 
-## OpenRouter voiceover (TTS)
+## MyanmarTTS voiceover (open source)
 
-This milestone adds a first voiceover step for a saved recap script.
+The authenticated `/api/generate-voiceover` route calls the separately hosted Python service in `myanmar-tts-service/`. It uses `freococo/MyanmarTTS` for Burmese-only narration and stores WAV output in the existing private Supabase `voiceovers` bucket.
 
-1. In Supabase SQL Editor, run `supabase/migrations/202611110003_add_voiceover_storage.sql`. It adds voiceover metadata and creates a **private** `voiceovers` bucket with user-folder RLS policies.
-2. Add `OPENROUTER_API_KEY` as a server-only environment variable in Vercel (Production and Preview as needed). Never prefix it with `NEXT_PUBLIC_`.
-3. Redeploy the app after setting the key and running the migration.
-4. Open a saved project that already has a recap script, then choose **Generate Voiceover**. The generated MP3 is stored privately and the app creates a temporary signed playback URL when the project is opened.
+### Deployment
 
-The initial TTS model is `google/gemini-3.8-flash-tts`. The lower-priced Gemini Flash-Lite TTS model does not currently list Burmese among its supported languages, so this first Burmese-capable option uses the full Flash TTS model. OpenRouter currently lists $0.50 per million input tokens and $9 per million audio output tokens; actual usage depends on the generated speech length and current provider pricing. English and Burmese both use the same model in this initial milestone. Female/Male selections map to the prebuilt `Kore` and `Charon` voices respectively; voice character is not a guarantee of perceived gender.
+1. Create a **Docker Space** on Hugging Face and upload the contents of `myanmar-tts-service/`.
+2. Add a Space secret named `MYANMAR_TTS_SERVICE_TOKEN` with a long random value.
+3. Wait for the model to load, then check `https://YOUR-SPACE.hf.space/health`.
+4. In Vercel Environment Variables, add server-only `MYANMAR_TTS_SERVICE_URL` (Space URL) and `MYANMAR_TTS_SERVICE_TOKEN` (same secret).
+5. Redeploy Vercel.
+6. Open a saved project with a Myanmar-language script and choose **Generate Voiceover**.
 
-The initial endpoint accepts up to 10,000 script characters in one request and has a 52-second upstream timeout. Longer scripts need scene/chunk-based synthesis in a later milestone. Voice generation is a paid action: avoid repeated clicks. The endpoint reuses the same private storage object on regeneration.
+Never prefix either service variable with `NEXT_PUBLIC_`. The service token must remain server-side.
 
-## Current limitations
+### Free-tier and operational caveats
 
-Voiceover generation requires a signed-in Supabase user, a working OpenRouter key, and the migration above. It does not yet split long scripts into timed scenes, generate subtitles, or render a video. Use only source media and scripts you own or are authorized to process.
+- The model and generated audio are CC0. The model supports Burmese only and currently has one built-in voice; the app's Male/Female preference does not change the synthesized voice.
+- The model card says CPU inference is supported but slower. Hugging Face lists CPU Basic as 2 vCPU / 16 GB RAM with no hourly compute charge, and Spaces can sleep after inactivity.
+- **Important:** Hugging Face documentation also says creating compute-backed Docker/Gradio Spaces may require a paid Hugging Face plan, even when CPU Basic has no hourly compute price. Confirm your account's eligibility before relying on this as a zero-cost host.
+- Vercel Hobby function duration and memory limits apply. This route requests up to 300 seconds; actual limits depend on Fluid Compute and the Vercel plan. Long scripts on CPU can time out.
+- The synchronous integration is capped at 3,500 characters. Reliable longer recaps should move to an asynchronous job queue with chunked synthesis.
+
+### Security
+
+The Next.js route validates the signed-in Supabase user and project ownership. The Python service requires a private bearer token. Generated audio is uploaded to private Supabase Storage and played with a one-hour signed URL.
