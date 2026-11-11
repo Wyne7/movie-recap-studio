@@ -9,15 +9,18 @@ const GEMINI_INTERACTIONS_URL = "https://generativelanguage.googleapis.com/v1bet
 function isValidYouTubeUrl(value: string): boolean {
   try {
     const url = new URL(value);
-    const hostname = url.hostname.toLowerCase().replace(/^www\\./, "");
+    const hostname = url.hostname.toLowerCase().replace(/^www[.] /, "");
+    const normalizedHost = hostname.startsWith("www.") ? hostname.slice(4) : hostname;
 
     if (url.protocol !== "https:" && url.protocol !== "http:") return false;
-    if (hostname === "youtu.be") return url.pathname.length > 1;
+    if (normalizedHost === "youtu.be") return url.pathname.length > 1;
 
-    if (hostname === "youtube.com" || hostname === "m.youtube.com") {
+    if (normalizedHost === "youtube.com" || normalizedHost === "m.youtube.com") {
       return (
         (url.pathname === "/watch" && Boolean(url.searchParams.get("v"))) ||
-        /^\\/(shorts|embed|live)\\/[^/]+/.test(url.pathname)
+        ["/shorts/", "/embed/", "/live/"].some(
+          (prefix) => url.pathname.startsWith(prefix) && url.pathname.length > prefix.length
+        )
       );
     }
 
