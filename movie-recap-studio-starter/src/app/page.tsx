@@ -809,7 +809,8 @@ export default function HomePage() {
             // synthesis and file assembly fill the remaining half.
             setEnglishProgressPercent(Math.round(downloadPercent * 0.5));
           } else {
-            setEnglishProgress(event.stage === "worker-started" ? "Voice worker started. Loading model runtime..." : "Loading voice model...");
+            const stage = (event as ProgressEvent<EventTarget> & { stage?: string }).stage;
+            setEnglishProgress(stage === "worker-started" ? "Voice worker started. Loading model runtime..." : "Loading voice model...");
             setEnglishProgressPercent(null);
           }
         });
