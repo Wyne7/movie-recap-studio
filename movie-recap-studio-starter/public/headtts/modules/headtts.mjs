@@ -279,7 +279,7 @@ class HeadTTS {
             // to load on a cold mobile browser. Use a generous startup deadline,
             // then a shorter inactivity deadline that is refreshed by real progress.
             const STARTUP_TIMEOUT_MS = 300000;
-            const PROGRESS_TIMEOUT_MS = 120000;
+            const PROGRESS_TIMEOUT_MS = 300000;
             const rejectedTimeout = () => reject(new Error(
               'Connection timed out while loading the browser voice model. Check your connection and allow the first model download to finish.'
             ));
