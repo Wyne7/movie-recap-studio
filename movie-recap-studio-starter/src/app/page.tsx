@@ -760,8 +760,8 @@ export default function HomePage() {
           // iOS Safari's WebGPU availability varies by OS/device. Prefer the
           // more compatible WASM backend there; Android/desktop try WebGPU first.
           endpoints: isIOS ? ["wasm"] : ["webgpu", "wasm"],
-          workerModule: "https://cdn.jsdelivr.net/npm/@met4citizen/headtts@1.3.0/modules/worker-tts.mjs",
-          dictionaryURL: "https://cdn.jsdelivr.net/npm/@met4citizen/headtts@1.3.0/dictionaries/",
+          workerModule: new URL("/headtts/modules/worker-tts.mjs", window.location.href).toString(),
+          dictionaryURL: new URL("/headtts/dictionaries/", window.location.href).toString(),
           voices: [voiceId],
           defaultVoice: voiceId,
           defaultLanguage: "en-us",
