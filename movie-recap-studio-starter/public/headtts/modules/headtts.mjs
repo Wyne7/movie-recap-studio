@@ -302,7 +302,13 @@ class HeadTTS {
                 clearTimeout(timeout);
                 timeout = null;
               }
-              reject(ev);
+              const details = [
+                ev?.message || "The browser could not load the worker module.",
+                ev?.filename ? "file: " + ev.filename : "",
+                Number.isFinite(ev?.lineno) && ev.lineno > 0 ? "line: " + ev.lineno : "",
+                Number.isFinite(ev?.colno) && ev.colno > 0 ? "column: " + ev.colno : ""
+              ].filter(Boolean).join(" | ");
+              reject(new Error("Module worker startup failed: " + details));
             }
 
             // Setup
@@ -352,10 +358,13 @@ class HeadTTS {
             this.ww.terminate();
             this.ww = null;
           }
+          const detail = error instanceof Error
+            ? error.name + ": " + error.message
+            : String(error);
           if ( isTraceConnection ) {
-            utils.trace( "Failed to start Module Web Worker." );
+            utils.trace( "Failed to start Module Web Worker.", detail );
           }
-          connectionErrorLog.push( "Failed to start Module Web Worker." );
+          connectionErrorLog.push( "Failed to start Module Web Worker. " + detail );
         }
 
       } else {
