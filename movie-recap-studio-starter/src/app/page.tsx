@@ -213,6 +213,8 @@ export default function HomePage() {
   const [voice, setVoice] = useState<"Female" | "Male">("Female");
   const [formError, setFormError] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
+  const [scriptProgress, setScriptProgress] = useState("");
+  const [scriptElapsedSeconds, setScriptElapsedSeconds] = useState(0);
   const [generatedScript, setGeneratedScript] = useState("");
   const [selectedProject, setSelectedProject] = useState<RecapProject | null>(null);
   const [voiceoverUrl, setVoiceoverUrl] = useState("");
@@ -223,6 +225,18 @@ export default function HomePage() {
   const [englishSrtUrl, setEnglishSrtUrl] = useState("");
   const [englishProgress, setEnglishProgress] = useState("");
   const headTtsRef = useRef<HeadTTSClient | null>(null);
+
+  useEffect(() => {
+    if (!isGenerating) {
+      setScriptElapsedSeconds(0);
+      return;
+    }
+    const startedAt = Date.now();
+    const timer = window.setInterval(() => {
+      setScriptElapsedSeconds(Math.floor((Date.now() - startedAt) / 1000));
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [isGenerating]);
 
   useEffect(() => {
     if (!isSupabaseConfigured) {
@@ -387,7 +401,10 @@ export default function HomePage() {
     let savedProject: RecapProject | null = null;
 
     try {
-      if (generateAfterSave) setIsGenerating(true);
+      if (generateAfterSave) {
+        setIsGenerating(true);
+        setScriptProgress("Saving your project and preparing the Gemini request...");
+      }
 
       // Save the project once. Generating is a separate, explicitly paid action.
       if (isSupabaseConfigured && supabase && user) {
@@ -451,7 +468,8 @@ export default function HomePage() {
         return;
       }
 
-      setNotice("Analyzing the YouTube video and generating your recap script...");
+      setScriptProgress("Sending the YouTube video link to Gemini...");
+      setNotice("Gemini is analyzing the video and writing your recap. This may take a few minutes.");
 
       let accessToken: string | null = null;
       if (isSupabaseConfigured && supabase) {
@@ -465,6 +483,8 @@ export default function HomePage() {
         throw new Error("Sign in to your Supabase account before generating a paid AI recap.");
       }
 
+      setScriptProgress("Waiting for Gemini to analyze the video and write your script...");
+      setScriptProgress("Waiting for Gemini to analyze the video and write your script...");
       const response = await fetch("/api/generate-recap", {
         method: "POST",
         headers: {
@@ -491,6 +511,7 @@ export default function HomePage() {
       const script = result.script.trim();
       if (!script) throw new Error("The AI returned an empty recap script.");
 
+      setScriptProgress("Gemini finished. Saving your recap script...");
       // Save the completed script so reopening the project does not require another paid call.
       if (isSupabaseConfigured && supabase && user) {
         const { error: updateError } = await supabase
@@ -550,6 +571,7 @@ export default function HomePage() {
       setNotice("");
     } finally {
       setIsGenerating(false);
+      setScriptProgress("");
     }
   }
 
@@ -561,8 +583,9 @@ export default function HomePage() {
     }
 
     setIsGenerating(true);
+    setScriptProgress("Preparing the saved project for Gemini...");
     setFormError("");
-    setNotice("Analyzing the saved YouTube project and generating your recap script...");
+    setNotice("Sending the video link to Gemini. The analysis can take a few minutes.");
 
     try {
       const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
@@ -592,6 +615,7 @@ export default function HomePage() {
       const script = result.script.trim();
       if (!script) throw new Error("The AI returned an empty recap script.");
 
+      setScriptProgress("Gemini finished. Saving your recap script...");
       const { error: updateError } = await supabase
         .from("projects")
         .update({ script, status: "Ready to edit" })
@@ -615,6 +639,7 @@ export default function HomePage() {
       setFormError(caught instanceof Error ? caught.message : "Could not generate the recap script.");
     } finally {
       setIsGenerating(false);
+      setScriptProgress("");
     }
   }
 
@@ -979,9 +1004,11 @@ export default function HomePage() {
             <label className="field-label">Recap length<select value={duration} onChange={(event) => setDuration(event.target.value as "3 min" | "5 min" | "10 min")}><option>3 min</option><option>5 min</option><option>10 min</option></select></label>
             <div className="field-label">Narrator voice</div><div className="voice-options"><button type="button" className={`voice-option ${voice === "Female" ? "selected" : ""}`} onClick={() => setVoice("Female")}><span className="voice-avatar">♀</span><span><strong>Female</strong><small>Warm narration</small></span><span className="radio-dot" /></button><button type="button" className={`voice-option ${voice === "Male" ? "selected" : ""}`} onClick={() => setVoice("Male")}><span className="voice-avatar male">♂</span><span><strong>Male</strong><small>Deep narration</small></span><span className="radio-dot" /></button></div><p className="modal-note">{language === "English" ? "English: the selected Male/Female option chooses a matching voice installed on this device when available. Voice names and gender labels vary by browser and operating system, so a default English voice may be used if no match is available." : "Myanmar: MyanmarTTS currently provides one built-in Burmese voice. The Male/Female setting does not change Burmese audio yet."}</p>
             {(isGenerating || isGeneratingVoiceover) && (
-              <p className="modal-note" role="status">
-                {isGeneratingVoiceover ? "AI is generating your voiceover. Keep this window open; do not submit again." : "AI is analyzing the YouTube video. Keep this window open; do not submit again."}
-              </p>
+              <div className="modal-note" role="status" aria-live="polite">
+                {isGeneratingVoiceover
+                  ? "AI is generating your voiceover. Keep this window open; do not submit again."
+                  : <>{scriptProgress || "Gemini is processing your video..."} Elapsed: {Math.floor(scriptElapsedSeconds / 60)}m {scriptElapsedSeconds % 60}s. Keep this window open; do not submit again.</>}
+              </div>
             )}
             {selectedProject && !generatedScript && (
               <p className="modal-note" role="status">
