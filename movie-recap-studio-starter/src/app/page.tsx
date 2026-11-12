@@ -484,7 +484,6 @@ export default function HomePage() {
       }
 
       setScriptProgress("Waiting for Gemini to analyze the video and write your script...");
-      setScriptProgress("Waiting for Gemini to analyze the video and write your script...");
       const response = await fetch("/api/generate-recap", {
         method: "POST",
         headers: {
