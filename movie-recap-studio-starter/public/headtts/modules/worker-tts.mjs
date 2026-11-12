@@ -109,6 +109,13 @@ function progress(ev) {
 */
 async function connect() {
 
+  // Let the main thread know the module worker is alive before it starts
+  // importing Transformers.js or downloading model assets.
+  eventHandler.postMessage({
+    type: "progress",
+    data: { loaded: 0, total: 0, lengthComputable: false, stage: "worker-started" }
+  });
+
   if ( isTraceConnection ) {
     utils.trace( 'Loading model "' + settings.transformersModule + '" started.' );
   }
