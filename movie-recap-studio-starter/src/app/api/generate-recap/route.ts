@@ -3,7 +3,6 @@ import { createClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
 
-const MODEL = "gemini-3.6-flash";
 const GEMINI_INTERACTIONS_URL = "https://generativelanguage.googleapis.com/v1beta/interactions";
 
 function isValidYouTubeUrl(value: string): boolean {
