@@ -752,7 +752,9 @@ export default function HomePage() {
     try {
       let engine = headTtsRef.current;
       if (!engine) {
-        const { HeadTTS } = await import("@met4citizen/headtts");
+        const headTtsModuleUrl = new URL("/headtts/modules/headtts.mjs", window.location.href).toString();
+        const headTtsModule = await import(/* webpackIgnore: true */ headTtsModuleUrl) as typeof import("@met4citizen/headtts");
+        const { HeadTTS } = headTtsModule;
         const voiceId = voice === "Female" ? "af_bella" : "am_fenrir";
         const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent) ||
           (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);

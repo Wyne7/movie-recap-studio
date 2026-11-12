@@ -3,7 +3,6 @@ import { createClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
 
-const MODEL = "gemini-3.6-flash";
 const GEMINI_INTERACTIONS_URL = "https://generativelanguage.googleapis.com/v1beta/interactions";
 
 function isValidYouTubeUrl(value: string): boolean {
@@ -122,29 +121,73 @@ export async function POST(request: NextRequest) {
       "Return only the finished narration script."
     ].join("\\n");
 
-    const upstream = await fetch(GEMINI_INTERACTIONS_URL, {
-      method: "POST",
-      headers: {
-        "x-goog-api-key": apiKey,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: MODEL,
-        input: [
-          { type: "video", uri: videoUrl },
-          { type: "text", text: prompt },
-        ],
-      }),
-      cache: "no-store",
-    });
+    const models = ["gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.5-flash-lite"];
+    let upstream: Response | null = null;
+    let data: any = null;
+    let activeModel = models[0];
+    let lastUpstreamMessage = "";
 
-    const data = await upstream.json().catch(() => null);
+    // Retry transient overloads, then fall back to another currently supported
+    // stable Flash model. Keep the same user request and video URL throughout.
+    for (const model of models) {
+      activeModel = model;
+      let shouldTryFallback = false;
+
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        const response = await fetch(GEMINI_INTERACTIONS_URL, {
+          method: "POST",
+          headers: {
+            "x-goog-api-key": apiKey,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model,
+            input: [
+              { type: "video", uri: videoUrl },
+              { type: "text", text: prompt },
+            ],
+          }),
+          cache: "no-store",
+        });
+
+        const responseData = await response.json().catch(() => null);
+        upstream = response;
+        data = responseData;
+
+        if (response.ok) {
+          shouldTryFallback = false;
+          break;
+        }
+
+        lastUpstreamMessage =
+          responseData?.error?.message ||
+          responseData?.message ||
+          "Gemini returned HTTP " + response.status + ".";
+
+        const transient = [429, 500, 502, 503, 504].includes(response.status);
+        if (!transient) {
+          shouldTryFallback = false;
+          break;
+        }
+
+        shouldTryFallback = true;
+        // Quota exhaustion is unlikely to clear within this request; switch models.
+        if (response.status === 429) break;
+        if (attempt === 0) {
+          await new Promise((resolve) => setTimeout(resolve, 800));
+        }
+      }
+
+      if (upstream?.ok) break;
+      if (!shouldTryFallback) break;
+    }
+
+    if (!upstream) {
+      throw new Error("Gemini did not return a response. Please try again.");
+    }
 
     if (!upstream.ok) {
-      const upstreamMessage =
-        data?.error?.message ||
-        data?.message ||
-        "Gemini returned HTTP " + upstream.status + ".";
+      const upstreamMessage = lastUpstreamMessage || "Gemini could not generate the recap.";
       const normalized = String(upstreamMessage).toLowerCase();
 
       if (normalized.includes("location") && (normalized.includes("not supported") || normalized.includes("unsupported"))) {
@@ -156,7 +199,7 @@ export async function POST(request: NextRequest) {
 
       if (upstream.status === 429) {
         return NextResponse.json(
-          { success: false, error: "Gemini free-tier rate limit reached. Please wait for the quota to reset before trying again." },
+          { success: false, error: "Gemini free-tier quota/rate limit is currently exhausted across the available fallback models. Please wait for quota to reset and try again." },
           { status: 429 }
         );
       }
@@ -169,7 +212,7 @@ export async function POST(request: NextRequest) {
       }
 
       return NextResponse.json(
-        { success: false, error: upstreamMessage },
+        { success: false, error: "All configured Gemini models are temporarily unavailable. Last provider message: " + upstreamMessage },
         { status: upstream.status >= 500 ? 502 : upstream.status }
       );
     }
@@ -185,7 +228,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       provider: "Google Gemini API",
-      model: MODEL,
+      model: activeModel,
       title,
       language,
       duration,
