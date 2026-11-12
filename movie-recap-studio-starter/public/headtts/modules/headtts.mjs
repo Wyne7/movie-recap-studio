@@ -275,15 +275,21 @@ class HeadTTS {
               this.ww = new Worker(url, { type: 'module' });
             }
 
-            // Handle progress reports and wait for ready message
-            const rejectedTimeout = () => reject('Connection timed out.');
-            let timeout = setTimeout(rejectedTimeout, 30000);
+            // Model files and the Transformers runtime can take several minutes
+            // to load on a cold mobile browser. Use a generous startup deadline,
+            // then a shorter inactivity deadline that is refreshed by real progress.
+            const STARTUP_TIMEOUT_MS = 300000;
+            const PROGRESS_TIMEOUT_MS = 120000;
+            const rejectedTimeout = () => reject(new Error(
+              'Connection timed out while loading the browser voice model. Check your connection and allow the first model download to finish.'
+            ));
+            let timeout = setTimeout(rejectedTimeout, STARTUP_TIMEOUT_MS);
 
             this.ww.onmessage = (ev) => {
               if ( ev.data?.type === 'progress' ) {
                 if (timeout) {
                   clearTimeout(timeout);
-                  timeout = setTimeout(rejectedTimeout, 10000);
+                  timeout = setTimeout(rejectedTimeout, PROGRESS_TIMEOUT_MS);
                 }
                 if ( typeof onprogress === 'function' ) {
                   onprogress( new ProgressEvent('progress', ev.data.data ));
