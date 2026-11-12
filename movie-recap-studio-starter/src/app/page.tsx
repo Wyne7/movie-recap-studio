@@ -109,6 +109,9 @@ function formatSrtTime(milliseconds: number): string {
 
 function timedWordsToSrt(words: TimedWord[]): string {
   const cues: Array<{ text: string; start: number; end: number }> = [];
+  const validWords = words.filter((word) =>
+    word.text.trim() && Number.isFinite(word.start) && Number.isFinite(word.end) && word.end > word.start
+  );
   let current: TimedWord[] = [];
   const flush = () => {
     if (!current.length) return;
@@ -120,7 +123,7 @@ function timedWordsToSrt(words: TimedWord[]): string {
     current = [];
   };
 
-  for (const word of words) {
+  for (const word of validWords) {
     current.push(word);
     const text = current.map((item) => item.text).join(" ");
     const last = word.text.trim();
@@ -134,8 +137,8 @@ function timedWordsToSrt(words: TimedWord[]): string {
   flush();
 
   return cues.map((cue, index) =>
-    `${index + 1}\\n${formatSrtTime(cue.start)} --> ${formatSrtTime(cue.end)}\\n${cue.text}`
-  ).join("\\n\\n") + "\\n";
+    `${index + 1}\n${formatSrtTime(cue.start)} --> ${formatSrtTime(cue.end)}\n${cue.text}`
+  ).join("\n\n") + "\n";
 }
 
 function splitSpeechText(text: string, maxLength: number): string[] {
@@ -848,11 +851,15 @@ export default function HomePage() {
         for (let index = 0; index < words.length; index += 1) {
           const text = words[index]?.trim();
           if (!text) continue;
-          const start = offsetMs + (starts[index] ?? 0);
+          const rawStart = Number(starts[index]);
+          if (!Number.isFinite(rawStart) || rawStart < 0) continue;
+          const rawDuration = Number(durations[index]);
+          const duration = Number.isFinite(rawDuration) && rawDuration > 0 ? rawDuration : 300;
+          const start = offsetMs + rawStart;
           timedWords.push({
             text,
             start,
-            end: start + Math.max(120, durations[index] ?? 300),
+            end: start + Math.max(120, duration),
           });
         }
         offsetMs += audio.duration * 1000;
