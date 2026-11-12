@@ -138,6 +138,25 @@ function timedWordsToSrt(words: TimedWord[]): string {
   ).join("\\n\\n") + "\\n";
 }
 
+function splitSpeechText(text: string, maxLength: number): string[] {
+  const words = text.trim().split(/\s+/).filter(Boolean);
+  const chunks: string[] = [];
+  let current = "";
+
+  for (const word of words) {
+    const next = current ? current + " " + word : word;
+    if (current && next.length > maxLength) {
+      chunks.push(current);
+      current = word;
+    } else {
+      current = next;
+    }
+  }
+
+  if (current) chunks.push(current);
+  return chunks;
+}
+
 function downloadBlob(blobUrl: string, filename: string) {
   const anchor = document.createElement("a");
   anchor.href = blobUrl;
@@ -735,8 +754,12 @@ export default function HomePage() {
       if (!engine) {
         const { HeadTTS } = await import("@met4citizen/headtts");
         const voiceId = voice === "Female" ? "af_bella" : "am_fenrir";
+        const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent) ||
+          (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
         engine = new HeadTTS({
-          endpoints: ["webgpu", "wasm"],
+          // iOS Safari's WebGPU availability varies by OS/device. Prefer the
+          // more compatible WASM backend there; Android/desktop try WebGPU first.
+          endpoints: isIOS ? ["wasm"] : ["webgpu", "wasm"],
           workerModule: "https://cdn.jsdelivr.net/npm/@met4citizen/headtts@1.3.0/modules/worker-tts.mjs",
           dictionaryURL: "https://cdn.jsdelivr.net/npm/@met4citizen/headtts@1.3.0/dictionaries/",
           voices: [voiceId],
@@ -759,14 +782,25 @@ export default function HomePage() {
         headTtsRef.current = engine;
       }
 
-      setEnglishProgress(`Generating ${voice.toLowerCase()} English voice and matching subtitle timings...`);
+      const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent) ||
+        (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+      setEnglishProgress("Voice model loaded. Initializing the audio engine...");
       await engine.setup({
         voice: voice === "Female" ? "af_bella" : "am_fenrir",
         language: "en-us",
         speed: 0.96,
         audioEncoding: "wav",
       });
-      const messages = await engine.synthesize({ input: script });
+
+      // Smaller sequential requests keep peak work per inference lower on phones
+      // and provide visible progress instead of appearing frozen at 100%.
+      const chunks = splitSpeechText(script, isIOS ? 260 : 450);
+      let messages: Awaited<ReturnType<HeadTTSClient["synthesize"]>> = [];
+      for (let index = 0; index < chunks.length; index += 1) {
+        setEnglishProgress(`Generating audio part ${index + 1} of ${chunks.length}...`);
+        const partMessages = await engine.synthesize({ input: chunks[index] });
+        messages = messages.concat(partMessages);
+      }
       const audioMessages = messages.filter((message) =>
         message.type === "audio" && message.data?.audio instanceof AudioBuffer
       );
