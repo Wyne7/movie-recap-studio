@@ -834,9 +834,9 @@ export default function HomePage() {
       let messages: Awaited<ReturnType<HeadTTSClient["synthesize"]>> = [];
       for (let index = 0; index < chunks.length; index += 1) {
         setEnglishProgress(`Generating audio part ${index + 1} of ${chunks.length}...`);
-        setEnglishProgressPercent(55 + Math.round(((index + 1) / chunks.length) * 40));
         const partMessages = await engine.synthesize({ input: chunks[index] });
         messages = messages.concat(partMessages);
+        setEnglishProgressPercent(55 + Math.round(((index + 1) / chunks.length) * 40));
       }
       const audioMessages = messages.filter((message) =>
         message.type === "audio" && message.data?.audio instanceof AudioBuffer
