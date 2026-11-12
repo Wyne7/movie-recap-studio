@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
+import { randomUUID } from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
+export const maxDuration = 300;
+
+const GEMINI_REQUEST_TIMEOUT_MS = 240_000;
 
 const GEMINI_INTERACTIONS_URL = "https://generativelanguage.googleapis.com/v1beta/interactions";
 
@@ -45,6 +49,9 @@ function extractGeneratedText(data: any): string {
 }
 
 export async function POST(request: NextRequest) {
+  const requestId = randomUUID();
+  const requestStartedAt = Date.now();
+
   try {
     const authorization = request.headers.get("authorization") || "";
     const accessToken = authorization.startsWith("Bearer ")
@@ -126,6 +133,15 @@ export async function POST(request: NextRequest) {
     let data: any = null;
     let activeModel = models[0];
     let lastUpstreamMessage = "";
+    const requestTimeout = AbortSignal.timeout(GEMINI_REQUEST_TIMEOUT_MS);
+
+    console.info("[generate-recap] request_started", {
+      requestId,
+      modelCount: models.length,
+      language,
+      duration,
+      recapType,
+    });
 
     // Retry transient overloads, then fall back to another currently supported
     // stable Flash model. Keep the same user request and video URL throughout.
@@ -134,23 +150,64 @@ export async function POST(request: NextRequest) {
       let shouldTryFallback = false;
 
       for (let attempt = 0; attempt < 2; attempt += 1) {
-        const response = await fetch(GEMINI_INTERACTIONS_URL, {
-          method: "POST",
-          headers: {
-            "x-goog-api-key": apiKey,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            model,
-            input: [
-              { type: "video", uri: videoUrl },
-              { type: "text", text: prompt },
-            ],
-          }),
-          cache: "no-store",
+        const attemptStartedAt = Date.now();
+        console.info("[generate-recap] attempt_started", {
+          requestId,
+          model,
+          attempt: attempt + 1,
         });
 
+        let response: Response;
+        try {
+          response = await fetch(GEMINI_INTERACTIONS_URL, {
+            method: "POST",
+            headers: {
+              "x-goog-api-key": apiKey,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              model,
+              input: [
+                { type: "video", uri: videoUrl },
+                { type: "text", text: prompt },
+              ],
+            }),
+            cache: "no-store",
+            signal: requestTimeout,
+          });
+        } catch (error) {
+          const timedOut = error instanceof Error &&
+            (error.name === "TimeoutError" || error.name === "AbortError");
+          console.error("[generate-recap] attempt_failed", {
+            requestId,
+            model,
+            attempt: attempt + 1,
+            elapsedMs: Date.now() - attemptStartedAt,
+            error: error instanceof Error ? error.message : String(error),
+            timedOut,
+          });
+          if (timedOut) {
+            return NextResponse.json(
+              {
+                success: false,
+                requestId,
+                elapsedMs: Date.now() - requestStartedAt,
+                error: "Gemini did not finish analyzing this video within 4 minutes. Please try again later; the request was stopped to avoid an indefinite wait.",
+              },
+              { status: 504 }
+            );
+          }
+          throw error;
+        }
+
         const responseData = await response.json().catch(() => null);
+        console.info("[generate-recap] attempt_finished", {
+          requestId,
+          model,
+          attempt: attempt + 1,
+          httpStatus: response.status,
+          elapsedMs: Date.now() - attemptStartedAt,
+        });
         upstream = response;
         data = responseData;
 
@@ -235,9 +292,15 @@ export async function POST(request: NextRequest) {
       recapType,
       script,
       usageCost: 0,
+      requestId,
+      elapsedMs: Date.now() - requestStartedAt,
     });
   } catch (error) {
-    console.error("YouTube recap generation failed:", error);
+    console.error("[generate-recap] request_failed", {
+      requestId,
+      elapsedMs: Date.now() - requestStartedAt,
+      error: error instanceof Error ? error.message : String(error),
+    });
     return NextResponse.json(
       { success: false, error: error instanceof Error ? error.message : "Could not generate the recap script." },
       { status: 500 }
