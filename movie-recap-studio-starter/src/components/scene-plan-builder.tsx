@@ -81,7 +81,7 @@ export function ScenePlanBuilder({ videoUrl, script, language, onPlanGenerated }
       <div>
         <h3 style={{ fontSize: 12, margin: "0 0 5px" }}>AI Scene Selection · YouTube Link</h3>
         <p style={{ fontSize: 11, color: "#747484", margin: 0 }}>
-          Gemini analyzes the linked video and matches relevant source timestamps to your recap narration. This creates an edit plan; it does not download or render the YouTube video.
+          Gemini analyzes the linked video and matches relevant source timestamps to your recap narration. After generating the plan, provide an authorized direct media URL in the renderer to cut those scenes and build the MP4. The YouTube watch link itself is not used as a downloadable media file.
         </p>
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 9 }}>
@@ -119,7 +119,7 @@ export function ScenePlanBuilder({ videoUrl, script, language, onPlanGenerated }
             </article>
           ))}
           <p className="modal-note" style={{ margin: 0 }}>
-            These are AI-suggested timestamps, not a rendered MP4. Automatic cutting and final export from the YouTube source are a separate integration step and require an authorized way to access the video media.
+            The plan is ready for the MP4 renderer. In the renderer, paste a direct HTTPS media-file URL that you are authorized to use and that permits browser CORS access. AI narration timing is approximate; uncovered narration intervals may show a black background.
           </p>
         </div>
       )}
