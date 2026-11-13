@@ -89,7 +89,7 @@ export function VideoRenderer({
     if (!scenePlan?.segments.length) {
       throw new Error("Generate the AI Scene Selection plan first, then create AI visuals.");
     }
-    if (!sourceVideoUrl) throw new Error("This project has no YouTube source URL for AI visual generation.");
+    if (!sourceVideoUrl && scenePlan?.sourceType !== "story") throw new Error("This project has no YouTube source URL for AI visual generation.");
     const supabase = getSupabaseBrowserClient();
     if (!supabase) throw new Error("Sign in is required to generate AI visuals.");
     const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
@@ -111,6 +111,7 @@ export function VideoRenderer({
         },
         body: JSON.stringify({
           videoUrl: sourceVideoUrl,
+          storyContext: scenePlan.sourceType === "story" ? scenePlan.storyContext : undefined,
           segment,
           style: scenePlan.style,
           aspectRatio: scenePlan.aspectRatio,
@@ -284,6 +285,7 @@ export function VideoRenderer({
       } else {
         const imageCount = renderImages.length;
         const secondsPerImage = duration / imageCount;
+        const storySegments = scenePlan?.sourceType === "story" ? scenePlan.segments.slice(0, imageCount) : [];
         const filters: string[] = [];
         const concatInputs: string[] = [];
         for (let index = 0; index < imageCount; index += 1) {
@@ -292,7 +294,10 @@ export function VideoRenderer({
           const safeExtension = ["jpg", "jpeg", "png", "webp"].includes(extension) ? extension : "jpg";
           const inputName = "visual-" + index + "." + safeExtension;
           await ffmpeg.writeFile(inputName, await fetchFile(file));
-          args.push("-loop", "1", "-framerate", "30", "-t", secondsPerImage.toFixed(3), "-i", inputName);
+          const plannedDuration = storySegments[index]
+            ? Math.max(0.5, storySegments[index].narrationEndSeconds - storySegments[index].narrationStartSeconds)
+            : secondsPerImage;
+          args.push("-loop", "1", "-framerate", "30", "-t", plannedDuration.toFixed(3), "-i", inputName);
           filters.push(
             "[" + index + ":v]scale=" + width + ":" + height + ":force_original_aspect_ratio=decrease," +
             "pad=" + width + ":" + height + ":(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30,format=yuv420p[v" + index + "]"
