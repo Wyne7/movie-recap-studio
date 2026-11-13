@@ -20,6 +20,8 @@ type RecapProject = {
   createdAt: string;
   script: string | null;
   voiceoverPath: string | null;
+  englishAudioPath: string | null;
+  englishSrtPath: string | null;
 };
 
 const STORAGE_KEY = "movie-recap-studio.projects.v1";
@@ -37,6 +39,8 @@ type ProjectRow = {
   source_type: "youtube";
   script: string | null;
   voiceover_path: string | null;
+  english_audio_path: string | null;
+  english_srt_path: string | null;
 };
 
 function fromProjectRow(row: ProjectRow): RecapProject {
@@ -47,6 +51,8 @@ function fromProjectRow(row: ProjectRow): RecapProject {
     language: row.language,
     script: row.script ?? null,
     voiceoverPath: row.voiceover_path ?? null,
+    englishAudioPath: row.english_audio_path ?? null,
+    englishSrtPath: row.english_srt_path ?? null,
     duration: row.duration,
     voice: row.voice,
     videoVisualMode: row.video_visual_mode ?? "original_clips",
@@ -299,7 +305,7 @@ export default function HomePage() {
 
     void supabase
       .from("projects")
-      .select("id,title,source_url,source_type,language,duration,voice,video_visual_mode,status,created_at,script,voiceover_path")
+      .select("id,title,source_url,source_type,language,duration,voice,video_visual_mode,status,created_at,script,voiceover_path,english_audio_path,english_srt_path")
       .order("created_at", { ascending: false })
       .then(({ data, error }) => {
         if (!active) return;
@@ -433,7 +439,7 @@ export default function HomePage() {
             script: null,
           })
           .select(
-            "id,title,source_url,source_type,language,duration,voice,video_visual_mode,status,created_at,script"
+            "id,title,source_url,source_type,language,duration,voice,video_visual_mode,status,created_at,script,english_audio_path,english_srt_path"
           )
           .single();
 
@@ -458,6 +464,8 @@ export default function HomePage() {
           createdAt: new Date().toISOString(),
           script: null,
           voiceoverPath: null,
+          englishAudioPath: null,
+          englishSrtPath: null,
         };
       }
 
@@ -664,6 +672,8 @@ export default function HomePage() {
     setVideoVisualMode(project.videoVisualMode ?? "original_clips");
     setGeneratedScript(project.script ?? "");
     setVoiceoverUrl("");
+    setEnglishAudioUrl("");
+    setEnglishSrtUrl("");
     setFormError("");
     if (project.voiceoverPath) {
       void (async () => {
@@ -676,6 +686,36 @@ export default function HomePage() {
         });
         const result = await response.json().catch(() => null);
         if (response.ok && result?.success && typeof result.signedUrl === "string") setVoiceoverUrl(result.signedUrl);
+      })();
+    }
+    if (project.englishAudioPath || project.englishSrtPath) {
+      void (async () => {
+        const supabase = getSupabaseBrowserClient();
+        if (!supabase) return;
+        try {
+          const [audioLink, srtLink] = await Promise.all([
+            project.englishAudioPath
+              ? supabase.storage.from("voiceovers").createSignedUrl(project.englishAudioPath, 60 * 60)
+              : Promise.resolve({ data: null, error: null }),
+            project.englishSrtPath
+              ? supabase.storage.from("voiceovers").createSignedUrl(project.englishSrtPath, 60 * 60)
+              : Promise.resolve({ data: null, error: null }),
+          ]);
+          if (audioLink.error) throw audioLink.error;
+          if (srtLink.error) throw srtLink.error;
+          if (audioLink.data?.signedUrl) {
+            const response = await fetch(audioLink.data.signedUrl);
+            if (!response.ok) throw new Error("Could not download the saved WAV file.");
+            setEnglishAudioUrl(URL.createObjectURL(await response.blob()));
+          }
+          if (srtLink.data?.signedUrl) {
+            const response = await fetch(srtLink.data.signedUrl);
+            if (!response.ok) throw new Error("Could not download the saved SRT file.");
+            setEnglishSrtUrl(URL.createObjectURL(await response.blob()));
+          }
+        } catch (error) {
+          setFormError(error instanceof Error ? error.message : "Could not load saved English files.");
+        }
       })();
     }
     setModalOpen(true);
@@ -879,12 +919,39 @@ export default function HomePage() {
 
       const wavBlob = audioBuffersToWav(buffers);
       const srtBlob = new Blob([timedWordsToSrt(timedWords)], { type: "text/plain;charset=utf-8" });
+      let englishAudioPath = selectedProject.englishAudioPath;
+      let englishSrtPath = selectedProject.englishSrtPath;
+      const supabase = getSupabaseBrowserClient();
+      if (isSupabaseConfigured) {
+        if (!supabase || !user) throw new Error("Sign in again before saving the generated English files.");
+        const projectFolder = user.id + "/" + selectedProject.id + "/";
+        englishAudioPath = projectFolder + "english-voiceover.wav";
+        englishSrtPath = projectFolder + "english-subtitles.srt";
+        const { error: audioUploadError } = await supabase.storage.from("voiceovers").upload(englishAudioPath, wavBlob, {
+          contentType: "audio/wav", cacheControl: "3600", upsert: true,
+        });
+        if (audioUploadError) throw new Error("WAV was generated but could not be saved: " + audioUploadError.message);
+        const { error: srtUploadError } = await supabase.storage.from("voiceovers").upload(englishSrtPath, srtBlob, {
+          contentType: "text/plain", cacheControl: "3600", upsert: true,
+        });
+        if (srtUploadError) throw new Error("SRT was generated but could not be saved: " + srtUploadError.message);
+        const { error: updateError } = await supabase.from("projects").update({
+          english_audio_path: englishAudioPath,
+          english_srt_path: englishSrtPath,
+        }).eq("id", selectedProject.id).eq("user_id", user.id);
+        if (updateError) throw new Error("Files were uploaded but their project record could not be saved: " + updateError.message);
+      }
       if (englishAudioUrl) URL.revokeObjectURL(englishAudioUrl);
       if (englishSrtUrl) URL.revokeObjectURL(englishSrtUrl);
       setEnglishAudioUrl(URL.createObjectURL(wavBlob));
       setEnglishSrtUrl(URL.createObjectURL(srtBlob));
+      const updatedProject = { ...selectedProject, englishAudioPath, englishSrtPath };
+      setSelectedProject(updatedProject);
+      setProjects((current) => current.map((project) => project.id === updatedProject.id ? updatedProject : project));
       setEnglishProgress("");
-      setNotice("English WAV voiceover and audio-timed SRT subtitles are ready to preview and download.");
+      setNotice(isSupabaseConfigured
+        ? "English WAV + SRT generated and saved privately. Reopen this project to reuse the same files without generating again."
+        : "English WAV voiceover and audio-timed SRT subtitles are ready in this browser.");
     } catch (error) {
       headTtsRef.current = null;
       setEnglishProgress("");
@@ -1065,7 +1132,7 @@ export default function HomePage() {
                   <p style={{ fontSize: 11, color: "#747484", margin: 0 }}>Free, open-source Kokoro voice generation runs in this browser. Choose Male or Female in the project settings. The first use downloads the voice model; keep this page open until generation finishes.</p>
                 </div>
                 <button type="button" className="secondary-button" onClick={generateEnglishAudioAndSubtitles} disabled={isGenerating || isGeneratingVoiceover || isGeneratingEnglishAudio}>
-                  {isGeneratingEnglishAudio ? "Generating English voice + subtitles..." : "Generate English WAV + SRT →"}
+                  {isGeneratingEnglishAudio ? "Generating English voice + subtitles..." : selectedProject.englishAudioPath && selectedProject.englishSrtPath ? "Regenerate English WAV + SRT" : "Generate English WAV + SRT →"}
                 </button>
                 {isGeneratingEnglishAudio && <p className="modal-note" role="status">{englishProgress || "Preparing voice model..."}</p>}
                 {englishAudioUrl && (
@@ -1077,7 +1144,7 @@ export default function HomePage() {
                     </div>
                   </div>
                 )}
-                <p className="modal-note">Narrator: <strong>{voice}</strong> · {voice === "Female" ? "American English — Bella" : "American English — Fenrir"}. Subtitle timing comes from the generated speech timestamps. This creates downloadable files locally; it does not upload them to your account.</p>
+                <p className="modal-note">Narrator: <strong>{voice}</strong> · {voice === "Female" ? "American English — Bella" : "American English — Fenrir"}. Subtitle timing comes from the generated speech timestamps. {selectedProject.englishAudioPath && selectedProject.englishSrtPath ? "Saved privately in your project and reused when you reopen it; no need to generate again." : isSupabaseConfigured ? "Generated files are saved privately to this project." : "Files are available in this browser only."}</p>
                 <button type="button" className="secondary-button" onClick={previewEnglishVoiceover} disabled={isGenerating || isGeneratingVoiceover || isGeneratingEnglishAudio}>
                   {isPreviewingEnglish ? "Stop quick device preview ■" : "Quick preview using device voice"}
                 </button>
