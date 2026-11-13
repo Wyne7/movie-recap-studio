@@ -202,6 +202,7 @@ export function VideoRenderer({
       let audioInputIndex = 0;
       let subtitleInputIndex = -1;
       let videoMap: string;
+      let complexFilters: string[] | null = null;
 
       if (visualMode === "original_clips" && (videoFile || authorizedMediaUrl.trim())) {
         let sourceBlob: Blob;
@@ -246,13 +247,15 @@ export function VideoRenderer({
             .sort((a, b) => a.narrationStartSeconds - b.narrationStartSeconds)
             .slice(0, 40);
           if (!validSegments.length) throw new Error("The AI scene plan has no usable timestamps within this narration's duration. Generate a new scene plan.");
-          args.push("-stream_loop", "-1", "-t", duration.toFixed(3), "-i", "source-video.mp4");
+          // Keep only AI-selected source clips on a neutral canvas. Do not play
+          // the entire source video underneath the edit or unrelated scenes leak through.
+          args.push("-f", "lavfi", "-i", "color=c=black:s=" + width + "x" + height + ":r=30:d=" + duration.toFixed(3));
           for (const segment of validSegments) {
             const sourceLength = segment.sourceEndSeconds - segment.sourceStartSeconds;
             args.push("-ss", segment.sourceStartSeconds.toFixed(3), "-t", sourceLength.toFixed(3), "-i", "source-video.mp4");
           }
           audioInputIndex = 1 + validSegments.length;
-          const filters = ["[0:v]scale=" + width + ":" + height + ":force_original_aspect_ratio=increase,crop=" + width + ":" + height + ",setsar=1,fps=30,format=yuv420p[base0]"];
+          const filters = ["[0:v]format=yuv420p[base0]"];
           let previous = "base0";
           validSegments.forEach((segment, index) => {
             const inputIndex = index + 1;
@@ -262,19 +265,18 @@ export function VideoRenderer({
             const clipLabel = "clip" + index;
             const outputLabel = "base" + (index + 1);
             filters.push(
-              "[" + inputIndex + ":v]trim=duration=" + sourceLength.toFixed(3) +
-              ",setpts=(PTS-STARTPTS)*" + (targetLength / sourceLength).toFixed(6) +
-              "+" + targetStart.toFixed(3) + "/TB,scale=" + width + ":" + height +
+              "[" + inputIndex + ":v]trim=duration=" + Math.min(sourceLength, targetLength).toFixed(3) +
+              ",setpts=PTS-STARTPTS+" + targetStart.toFixed(3) + "/TB,scale=" + width + ":" + height +
               ":force_original_aspect_ratio=increase,crop=" + width + ":" + height +
               ",setsar=1,fps=30,format=yuv420p[" + clipLabel + "]"
             );
             filters.push(
-              "[" + previous + "][" + clipLabel + "]overlay=eof_action=pass:shortest=0:enable='between(t," +
-              targetStart.toFixed(3) + "," + segment.narrationEndSeconds.toFixed(3) + ")'[" + outputLabel + "]"
+              "[" + previous + "][" + clipLabel + "]overlay=eof_action=repeat:shortest=0:enable='gte(t," +
+              targetStart.toFixed(3) + ")'[" + outputLabel + "]"
             );
             previous = outputLabel;
           });
-          args.push("-filter_complex", filters.join(";"));
+          complexFilters = filters;
           videoMap = "[" + previous + "]";
         } else {
           args.push("-stream_loop", "-1", "-i", "source-video.mp4");
@@ -300,24 +302,34 @@ export function VideoRenderer({
           concatInputs.push("[v" + index + "]");
         }
         filters.push(concatInputs.join("") + "concat=n=" + imageCount + ":v=1:a=0[vout]");
-        args.push("-filter_complex", filters.join(";"));
+        complexFilters = filters;
         audioInputIndex = imageCount;
         videoMap = "[vout]";
       }
 
       args.push("-i", "narration.wav");
+      let burnInSubtitleFilter = "";
       if (subtitleUrl) {
-        setStatus("Loading timed subtitles…");
+        setStatus("Loading subtitles for visible captions and an optional selectable subtitle track…");
         await ffmpeg.writeFile("captions.srt", await fetchFile(subtitleUrl));
         subtitleInputIndex = audioInputIndex + 1;
         args.push("-i", "captions.srt");
+        // Burn captions into the picture so they are visible in every player,
+        // while also keeping the selectable text track in the MP4.
+        burnInSubtitleFilter = "subtitles=filename=captions.srt:force_style='FontName=Arial,FontSize=24,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=2,Shadow=1,Alignment=2,MarginV=32'";
       }
 
-      if (visualMode === "original_clips" && !useScenePlan) {
-        args.push(
-          "-vf",
-          "scale=" + width + ":" + height + ":force_original_aspect_ratio=decrease,pad=" + width + ":" + height + ":(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30,format=yuv420p"
-        );
+      if (complexFilters) {
+        if (burnInSubtitleFilter) {
+          const currentLabel = videoMap.slice(1, -1);
+          complexFilters.push("[" + currentLabel + "]" + burnInSubtitleFilter + "[captioned]");
+          videoMap = "[captioned]";
+        }
+        args.push("-filter_complex", complexFilters.join(";"));
+      } else if (visualMode === "original_clips" && !useScenePlan) {
+        const scaleFilter =
+          "scale=" + width + ":" + height + ":force_original_aspect_ratio=decrease,pad=" + width + ":" + height + ":(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30,format=yuv420p";
+        args.push("-vf", burnInSubtitleFilter ? scaleFilter + "," + burnInSubtitleFilter : scaleFilter);
       }
       args.push(
         "-map", videoMap,
