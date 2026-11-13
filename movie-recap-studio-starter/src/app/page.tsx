@@ -5,6 +5,7 @@ import type { FormEvent } from "react";
 import type { User } from "@supabase/supabase-js";
 import type { HeadTTS as HeadTTSClient } from "@met4citizen/headtts";
 import { AuthPanel } from "@/components/auth-panel";
+import { VideoRenderer } from "@/components/video-renderer";
 import { getSupabaseBrowserClient, isSupabaseConfigured } from "@/lib/supabase/client";
 
 type ProjectStatus = "Draft" | "Analyzing" | "Ready to edit" | "Rendering" | "Completed";
@@ -1271,7 +1272,19 @@ export default function HomePage() {
                 {isGeneratingVoiceover && <p className="modal-note">One voice generation request is running. The first request may take longer while the free service wakes up.</p>}
               </section>
             )}
-                        {formError && <p className="form-error" role="alert">{formError}</p>}
+                        {selectedProject && (
+              (selectedProject.language === "English" && Boolean(englishAudioUrl)) ||
+              (selectedProject.language === "Myanmar" && Boolean(voiceoverUrl))
+            ) && (
+              <VideoRenderer
+                visualMode={selectedProject.videoVisualMode ?? "original_clips"}
+                audioUrl={selectedProject.language === "English" ? englishAudioUrl : voiceoverUrl}
+                subtitleUrl={selectedProject.language === "English" ? englishSrtUrl : undefined}
+                projectTitle={selectedProject.title}
+                expectedDuration={selectedProject.duration}
+              />
+            )}
+            {formError && <p className="form-error" role="alert">{formError}</p>}
             <div className="modal-note"><span>ⓘ</span><p>Save Project is free and only stores the YouTube link. Generate Recap Script sends the public video URL to Gemini's YouTube URL preview, which Google currently lists as no-charge. Free-tier rate limits and regional availability apply. Use media you own or are authorized to process.</p></div>
             <div className="modal-actions">
               <button type="button" className="cancel-button" onClick={() => setModalOpen(false)}>Close</button>
