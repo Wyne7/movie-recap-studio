@@ -362,7 +362,7 @@ export function VideoRenderer({
     : "Reading audio duration…";
 
   return (
-    <section style={{ border: "1px solid #e7e7ed", borderRadius: 9, padding: 13, display: "grid", gap: 10 }}>
+    <section id="video-rendering-section" style={{ border: "1px solid #e7e7ed", borderRadius: 9, padding: 13, display: "grid", gap: 10, scrollMarginTop: 24 }}>
       <div>
         <h3 style={{ fontSize: 12, margin: "0 0 5px" }}>Video Rendering · MP4</h3>
         <p style={{ fontSize: 11, color: "#747484", margin: 0 }}>
