@@ -219,7 +219,7 @@ export function ScenePlanBuilder({ videoUrl, script, language, audioUrl, subtitl
               <li>Your existing narration WAV and SRT are reused automatically when loaded. Watch the progress bars while images are generated and the MP4 is rendered.</li>
               <li>Preview and download the finished MP4 when rendering completes.</li>
             </ol>
-            <span>Scene timing follows the matching SRT cues. Original Clips still requires media you own or are authorized to reuse. AI Visuals creates new illustrative images from the public YouTube video context; it does not download the source footage.</span>
+            <span>For Original Clips, scene overlays follow the exact SRT time windows on the WAV timeline. AI Visuals remains a still-image slideshow, so it does not yet provide frame-by-frame motion editing. Original Clips requires media you own or are authorized to reuse.</span>
           </div>
         </div>
       )}
