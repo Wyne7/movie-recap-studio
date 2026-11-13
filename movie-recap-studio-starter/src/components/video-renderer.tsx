@@ -44,6 +44,7 @@ export function VideoRenderer({
   const [outputUrl, setOutputUrl] = useState("");
 
   useEffect(() => {
+    setAudioDuration(0);
     const audio = new Audio(audioUrl);
     const updateDuration = () => {
       if (Number.isFinite(audio.duration) && audio.duration > 0) {
