@@ -81,7 +81,7 @@ export function ScenePlanBuilder({ videoUrl, script, language, onPlanGenerated }
       <div>
         <h3 style={{ fontSize: 12, margin: "0 0 5px" }}>AI Scene Selection · YouTube Link</h3>
         <p style={{ fontSize: 11, color: "#747484", margin: 0 }}>
-          Gemini analyzes the linked video and matches relevant source timestamps to your recap narration. After generating the plan, provide an authorized direct media URL in the renderer to cut those scenes and build the MP4. The YouTube watch link itself is not used as a downloadable media file.
+          Gemini analyzes the YouTube video and matches relevant scenes to your narration. Choose Original Clips to edit footage you are authorized to use, or AI Visuals to create new illustrated scenes from the YouTube context without supplying the original video file.
         </p>
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 9 }}>
@@ -129,11 +129,12 @@ export function ScenePlanBuilder({ videoUrl, script, language, onPlanGenerated }
             <ol style={{ margin: "0 0 0 18px", padding: 0, lineHeight: 1.7 }}>
               <li>Check the selected scene timestamps above.</li>
               <li>Scroll to Video Rendering · MP4.</li>
-              <li>For Original Clips, provide an authorized direct video-file URL or choose an authorized local video file. A YouTube watch link alone cannot supply the footage for rendering.</li>
-              <li>Check that your narration WAV is loaded. The SRT will be included automatically when attached.</li>
-              <li>Press Render MP4, wait for completion, then preview and download the video.</li>
+              <li>Choose Original Clips and provide a direct authorized MP4/MOV/WebM URL or select an authorized local video file. A YouTube watch link is not a downloadable video file.</li>
+              <li>Or choose AI Visuals: press Generate AI visuals + Render MP4. The app creates up to 12 original images from your YouTube scene plan; no original video file is needed.</li>
+              <li>Your existing narration WAV and SRT are reused automatically when loaded. Watch the progress bars while images are generated and the MP4 is rendered.</li>
+              <li>Preview and download the finished MP4 when rendering completes.</li>
             </ol>
-            <span>AI narration timing is approximate. The YouTube link is used for scene analysis only; it is not downloaded or converted into a video file.</span>
+            <span>AI narration timing is approximate. Original Clips still requires media you own or are authorized to reuse. AI Visuals creates new illustrative images from the public YouTube video context; it does not download the source footage.</span>
           </div>
         </div>
       )}
