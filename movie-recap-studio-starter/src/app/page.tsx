@@ -1283,6 +1283,7 @@ export default function HomePage() {
                 subtitleUrl={selectedProject.language === "English" ? englishSrtUrl : undefined}
                 projectTitle={selectedProject.title}
                 expectedDuration={selectedProject.duration}
+                scenePlan={sceneEditPlan}
               />
             )}
             {selectedProject && generatedScript && (
@@ -1290,6 +1291,7 @@ export default function HomePage() {
                 videoUrl={selectedProject.sourceUrl}
                 script={generatedScript}
                 language={selectedProject.language}
+                onPlanGenerated={setSceneEditPlan}
               />
             )}
             {formError && <p className="form-error" role="alert">{formError}</p>}
