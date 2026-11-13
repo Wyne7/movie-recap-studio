@@ -10,7 +10,7 @@ type VideoRendererProps = {
   audioUrl: string;
   subtitleUrl?: string;
   projectTitle: string;
-  expectedDuration: "3 min" | "5 min" | "10 min";
+  expectedDuration: "1 min" | "1.5 min" | "2 min" | "3 min" | "5 min" | "10 min";
   sourceVideoUrl: string;
   scenePlan?: SceneEditPlan | null;
 };
@@ -286,7 +286,7 @@ export function VideoRenderer({
       } else {
         const imageCount = renderImages.length;
         const secondsPerImage = duration / imageCount;
-        const storySegments = scenePlan?.sourceType === "story" ? scenePlan.segments.slice(0, imageCount) : [];
+        const storySegments = scenePlan?.sourceType === "story" && imageCount === scenePlan.segments.length ? scenePlan.segments : [];
         const filters: string[] = [];
         const concatInputs: string[] = [];
         for (let index = 0; index < imageCount; index += 1) {
