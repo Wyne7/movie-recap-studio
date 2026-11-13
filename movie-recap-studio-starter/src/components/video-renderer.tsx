@@ -32,12 +32,12 @@ export function VideoRenderer({
   subtitleUrl,
   projectTitle,
   expectedDuration,
+  scenePlan,
 }: VideoRendererProps) {
   const ffmpegRef = useRef<FFmpegInstance | null>(null);
   const ffmpegLoadedRef = useRef(false);
   const outputUrlRef = useRef("");
   const [videoFile, setVideoFile] = useState<File | null>(null);
-  const [authorizedMediaUrl, setAuthorizedMediaUrl] = useState("");
   const [authorizedMediaUrl, setAuthorizedMediaUrl] = useState("");
   const [imageFiles, setImageFiles] = useState<File[]>([]);
   const [audioDuration, setAudioDuration] = useState(0);
