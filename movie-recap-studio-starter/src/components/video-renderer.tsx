@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { FFmpeg as FFmpegInstance } from "@ffmpeg/ffmpeg";
 import type { SceneEditPlan } from "@/components/scene-plan-builder";
+import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 
 type VideoRendererProps = {
   visualMode: "original_clips" | "ai_visuals";
@@ -10,6 +11,7 @@ type VideoRendererProps = {
   subtitleUrl?: string;
   projectTitle: string;
   expectedDuration: "3 min" | "5 min" | "10 min";
+  sourceVideoUrl: string;
   scenePlan?: SceneEditPlan | null;
 };
 
@@ -32,6 +34,7 @@ export function VideoRenderer({
   subtitleUrl,
   projectTitle,
   expectedDuration,
+  sourceVideoUrl,
   scenePlan,
 }: VideoRendererProps) {
   const ffmpegRef = useRef<FFmpegInstance | null>(null);
@@ -40,6 +43,8 @@ export function VideoRenderer({
   const [videoFile, setVideoFile] = useState<File | null>(null);
   const [authorizedMediaUrl, setAuthorizedMediaUrl] = useState("");
   const [imageFiles, setImageFiles] = useState<File[]>([]);
+  const [generatedImageFiles, setGeneratedImageFiles] = useState<File[]>([]);
+  const [visualProgress, setVisualProgress] = useState({ completed: 0, total: 0 });
   const [audioDuration, setAudioDuration] = useState(0);
   const [isRendering, setIsRendering] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -75,6 +80,58 @@ export function VideoRenderer({
     setOutputUrl("");
   }
 
+  useEffect(() => {
+    setGeneratedImageFiles([]);
+    setVisualProgress({ completed: 0, total: 0 });
+  }, [sourceVideoUrl, scenePlan]);
+
+  async function generateAiVisuals(): Promise<File[]> {
+    if (!scenePlan?.segments.length) {
+      throw new Error("Generate the AI Scene Selection plan first, then create AI visuals.");
+    }
+    if (!sourceVideoUrl) throw new Error("This project has no YouTube source URL for AI visual generation.");
+    const supabase = getSupabaseBrowserClient();
+    if (!supabase) throw new Error("Sign in is required to generate AI visuals.");
+    const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+    if (sessionError || !sessionData.session?.access_token) {
+      throw new Error("Your session expired. Please sign in again.");
+    }
+
+    const segments = scenePlan.segments.slice(0, MAX_IMAGES);
+    const files: File[] = [];
+    setVisualProgress({ completed: 0, total: segments.length });
+    for (let index = 0; index < segments.length; index += 1) {
+      const segment = segments[index];
+      setStatus("Generating AI visual " + (index + 1) + " of " + segments.length + " from the YouTube scene plan…");
+      const response = await fetch("/api/generate-ai-visual", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: "Bearer " + sessionData.session.access_token,
+        },
+        body: JSON.stringify({
+          videoUrl: sourceVideoUrl,
+          segment,
+          style: scenePlan.style,
+          aspectRatio: scenePlan.aspectRatio,
+        }),
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok || !data?.success || typeof data.imageBase64 !== "string") {
+        throw new Error(data?.error || "Could not generate AI visual " + (index + 1) + ".");
+      }
+      const binary = atob(data.imageBase64);
+      const bytes = new Uint8Array(binary.length);
+      for (let byteIndex = 0; byteIndex < binary.length; byteIndex += 1) {
+        bytes[byteIndex] = binary.charCodeAt(byteIndex);
+      }
+      const mimeType = typeof data.mimeType === "string" ? data.mimeType : "image/png";
+      files.push(new File([bytes], "ai-scene-" + (index + 1) + ".png", { type: mimeType }));
+      setVisualProgress({ completed: index + 1, total: segments.length });
+    }
+    return files;
+  }
+
   async function renderVideo() {
     if (!audioUrl || !audioDuration || isRendering) return;
     const useScenePlan = visualMode === "original_clips" && Boolean(scenePlan?.segments.length);
@@ -82,19 +139,20 @@ export function VideoRenderer({
       setError("Paste an authorized direct video-file URL or use the optional local-file fallback.");
       return;
     }
-    if (visualMode === "ai_visuals" && imageFiles.length === 0) {
-      setError("Choose at least one AI-generated image before rendering.");
+    if (visualMode === "ai_visuals" && imageFiles.length === 0 && generatedImageFiles.length === 0 && (!scenePlan?.segments.length || !sourceVideoUrl)) {
+      setError("Generate AI Scene Selection first. The app will then create visuals from your YouTube link automatically, or you can upload your own images.");
       return;
     }
     if (videoFile && videoFile.size > MAX_VIDEO_BYTES) {
       setError("For browser rendering, please choose a video smaller than 500 MB.");
       return;
     }
-    if (imageFiles.some((file) => file.size > MAX_IMAGE_BYTES)) {
+    const existingRenderImages = imageFiles.length ? imageFiles : generatedImageFiles;
+    if (existingRenderImages.some((file) => file.size > MAX_IMAGE_BYTES)) {
       setError("Each image must be smaller than 15 MB.");
       return;
     }
-    if (imageFiles.length > MAX_IMAGES) {
+    if (existingRenderImages.length > MAX_IMAGES) {
       setError("Choose no more than 12 images for one render.");
       return;
     }
@@ -106,6 +164,11 @@ export function VideoRenderer({
     clearOutput();
 
     try {
+      let renderImages = existingRenderImages;
+      if (visualMode === "ai_visuals" && renderImages.length === 0) {
+        renderImages = await generateAiVisuals();
+        setGeneratedImageFiles(renderImages);
+      }
       const [{ FFmpeg }, { fetchFile, toBlobURL }] = await Promise.all([
         import("@ffmpeg/ffmpeg"),
         import("@ffmpeg/util"),
@@ -217,12 +280,12 @@ export function VideoRenderer({
           videoMap = "0:v:0";
         }
       } else {
-        const imageCount = imageFiles.length;
+        const imageCount = renderImages.length;
         const secondsPerImage = duration / imageCount;
         const filters: string[] = [];
         const concatInputs: string[] = [];
         for (let index = 0; index < imageCount; index += 1) {
-          const file = imageFiles[index];
+          const file = renderImages[index];
           const extension = (file.name.split(".").pop() || "jpg").toLowerCase();
           const safeExtension = ["jpg", "jpeg", "png", "webp"].includes(extension) ? extension : "jpg";
           const inputName = "visual-" + index + "." + safeExtension;
@@ -345,11 +408,11 @@ export function VideoRenderer({
             type="file"
             accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp"
             multiple
-            onChange={(event) => { setImageFiles(Array.from(event.target.files ?? [])); clearOutput(); }}
+            onChange={(event) => { setImageFiles(Array.from(event.target.files ?? [])); setGeneratedImageFiles([]); clearOutput(); }}
             disabled={isRendering}
           />
           <small style={{ display: "block", color: "#747484", fontWeight: 400, marginTop: 4 }}>
-            Upload up to 12 AI-generated images. They will be arranged as a {scenePlan?.aspectRatio === "9:16" ? "9:16" : "16:9"} slideshow. This version renders images you provide; automatic AI image generation is a separate future feature.
+            After AI Scene Selection, the app can generate up to 12 original scene illustrations from this YouTube link and arrange them into a slideshow. You can also upload your own images instead. Image generation uses your configured Gemini API quota and may incur charges.
           </small>
         </label>
       )}
@@ -363,14 +426,20 @@ export function VideoRenderer({
         type="button"
         className="primary-button"
         onClick={renderVideo}
-        disabled={isRendering || !audioDuration || (visualMode === "original_clips" ? (!videoFile && !authorizedMediaUrl.trim()) : imageFiles.length === 0)}
+        disabled={isRendering || !audioDuration || (visualMode === "original_clips" ? (!videoFile && !authorizedMediaUrl.trim()) : (imageFiles.length === 0 && generatedImageFiles.length === 0 && (!scenePlan?.segments.length || !sourceVideoUrl)))}
       >
-        {isRendering ? "Rendering MP4…" : "Render MP4 video →"}
+        {isRendering ? "Working…" : visualMode === "ai_visuals" && imageFiles.length === 0 && generatedImageFiles.length === 0 ? "Generate AI visuals + Render MP4 →" : "Render MP4 video →"}
       </button>
 
       {isRendering && (
         <div className="modal-note" role="status" aria-live="polite" style={{ display: "grid", gap: 7 }}>
           <span>{status}</span>
+          {visualProgress.total > 0 && visualMode === "ai_visuals" && (
+            <>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11 }}><strong>AI visual generation</strong><strong>{visualProgress.completed}/{visualProgress.total}</strong></div>
+              <progress value={visualProgress.completed} max={visualProgress.total} style={{ width: "100%", height: 9 }} />
+            </>
+          )}
           {progress > 0 ? (
             <>
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11 }}>
