@@ -78,8 +78,8 @@ export function VideoRenderer({
   async function renderVideo() {
     if (!audioUrl || !audioDuration || isRendering) return;
     const useScenePlan = visualMode === "original_clips" && Boolean(scenePlan?.segments.length);
-    if (visualMode === "original_clips" && !videoFile && !(useScenePlan && authorizedMediaUrl.trim())) {
-      setError(useScenePlan ? "Paste a CORS-enabled authorized direct video URL or choose an authorized video file." : "Choose an authorized video file before rendering.");
+    if (visualMode === "original_clips" && !videoFile && !authorizedMediaUrl.trim()) {
+      setError("Paste an authorized direct video-file URL or use the optional local-file fallback.");
       return;
     }
     if (visualMode === "ai_visuals" && imageFiles.length === 0) {
@@ -143,6 +143,10 @@ export function VideoRenderer({
         if (authorizedMediaUrl.trim()) {
           const mediaUrl = new URL(authorizedMediaUrl.trim());
           if (mediaUrl.protocol !== "https:") throw new Error("For safety, the direct media URL must use HTTPS.");
+          const mediaHost = mediaUrl.hostname.toLowerCase().replace(/^www\\./, "");
+          if (mediaHost === "youtube.com" || mediaHost === "m.youtube.com" || mediaHost === "youtu.be") {
+            throw new Error("Paste a direct authorized video-file URL, not a YouTube watch/share link. The YouTube link is used separately for AI scene analysis.");
+          }
           setStatus("Fetching the authorized direct video URL in your browser…");
           const mediaResponse = await fetch(mediaUrl.toString(), { mode: "cors", cache: "no-store" });
           if (!mediaResponse.ok) throw new Error("The direct video URL could not be read. Check that the link is public and allows browser CORS access.");
@@ -302,18 +306,38 @@ export function VideoRenderer({
       </div>
 
       {visualMode === "original_clips" ? (
-        <label className="field-label">
-          Authorized original video file
-          <input
-            type="file"
-            accept="video/mp4,video/quicktime,video/webm,.m4v"
-            onChange={(event) => { setVideoFile(event.target.files?.[0] ?? null); clearOutput(); }}
-            disabled={isRendering}
-          />
-          <small style={{ display: "block", color: "#747484", fontWeight: 400, marginTop: 4 }}>
-            Choose a video you own or have permission to reuse. One file per render; maximum 500 MB. When an AI scene plan is available, you can instead paste a direct media URL below.
-          </small>
-        </label>
+        <>
+          <label className="field-label">
+            Direct authorized video URL
+            <input
+              type="url"
+              value={authorizedMediaUrl}
+              placeholder="https://media.example.com/authorized-video.mp4"
+              onChange={(event) => { setAuthorizedMediaUrl(event.target.value); clearOutput(); }}
+              disabled={isRendering}
+            />
+            <small style={{ display: "block", color: "#747484", fontWeight: 400, marginTop: 4 }}>
+              Main source for automatic scene editing. Paste a direct HTTPS MP4/MOV/WebM file URL that you own or have permission to reuse. The file host must allow browser CORS access and the file must be 500 MB or smaller. A YouTube watch/share link is for AI analysis only; it is not a direct video-file URL.
+            </small>
+          </label>
+          <details style={{ border: "1px solid #ececf1", borderRadius: 7, padding: 10 }}>
+            <summary style={{ cursor: "pointer", fontSize: 11, fontWeight: 600 }}>
+              Optional fallback: choose a video file from this device
+            </summary>
+            <label className="field-label" style={{ marginTop: 10 }}>
+              Authorized original video file
+              <input
+                type="file"
+                accept="video/mp4,video/quicktime,video/webm,.m4v"
+                onChange={(event) => { setVideoFile(event.target.files?.[0] ?? null); clearOutput(); }}
+                disabled={isRendering}
+              />
+              <small style={{ display: "block", color: "#747484", fontWeight: 400, marginTop: 4 }}>
+                Use only a video you own or have permission to reuse. Maximum 500 MB. A pasted direct URL takes priority when both are provided.
+              </small>
+            </label>
+          </details>
+        </>
       ) : (
         <label className="field-label">
           AI-generated visual images
@@ -329,22 +353,6 @@ export function VideoRenderer({
           </small>
         </label>
       )}
-
-      {visualMode === "original_clips" && scenePlan?.segments.length ? (
-        <label className="field-label">
-          Authorized direct video URL (optional)
-          <input
-            type="url"
-            value={authorizedMediaUrl}
-            placeholder="https://media.example.com/authorized-video.mp4"
-            onChange={(event) => { setAuthorizedMediaUrl(event.target.value); clearOutput(); }}
-            disabled={isRendering}
-          />
-          <small style={{ display: "block", color: "#747484", fontWeight: 400, marginTop: 4 }}>
-            Use a direct HTTPS media-file link you are authorized to process. The host must allow browser CORS access; YouTube watch/share links are not direct media files. If this link cannot be fetched, use the authorized video file picker above.
-          </small>
-        </label>
-      ) : null}
 
       <div className="modal-note">
         Narration length: <strong>{durationLabel}</strong> · Project setting: <strong>{expectedDuration}</strong>{scenePlan ? " · AI edit plan: " + scenePlan.segments.length + " scenes · " + scenePlan.aspectRatio : ""}
