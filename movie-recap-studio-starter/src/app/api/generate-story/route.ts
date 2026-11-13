@@ -94,7 +94,7 @@ export async function POST(request: NextRequest) {
       const response = await fetch(GEMINI_URL, {
         method: "POST",
         headers: { "x-goog-api-key": apiKey, "Content-Type": "application/json" },
-        body: JSON.stringify({ model, input: prompt }),
+        body: JSON.stringify({ model, input: [{ type: "text", text: prompt }] }),
         cache: "no-store",
         signal: AbortSignal.timeout(150_000),
       });
