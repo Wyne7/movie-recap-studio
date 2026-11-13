@@ -10,7 +10,7 @@ const IMAGE_MODEL = "gemini-3.1-flash-image";
 function isValidYouTubeUrl(value: string): boolean {
   try {
     const url = new URL(value);
-    const hostname = url.hostname.toLowerCase().replace(/^www\\./, "");
+    const hostname = url.hostname.toLowerCase().replace(/^www\./, "");
     if (url.protocol !== "https:" && url.protocol !== "http:") return false;
     if (hostname === "youtu.be") return url.pathname.length > 1;
     if (hostname === "youtube.com" || hostname === "m.youtube.com") {
