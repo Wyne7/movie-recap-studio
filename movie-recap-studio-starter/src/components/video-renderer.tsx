@@ -369,11 +369,21 @@ export function VideoRenderer({
       </button>
 
       {isRendering && (
-        <div className="modal-note" role="status" aria-live="polite">
-          {status} {progress > 0 ? progress + "%" : ""}
-          <div style={{ height: 6, background: "#ececf1", borderRadius: 9, overflow: "hidden", marginTop: 8 }}>
-            <div style={{ width: progress + "%", height: "100%", background: "#6858df", transition: "width .2s" }} />
-          </div>
+        <div className="modal-note" role="status" aria-live="polite" style={{ display: "grid", gap: 7 }}>
+          <span>{status}</span>
+          {progress > 0 ? (
+            <>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11 }}>
+                <strong>Render progress</strong><strong>{progress}%</strong>
+              </div>
+              <progress value={progress} max={100} style={{ width: "100%", height: 9 }} />
+            </>
+          ) : (
+            <>
+              <progress style={{ width: "100%", height: 9 }} />
+              <small>Preparing files or starting FFmpeg. A percentage will appear when the renderer reports measurable progress.</small>
+            </>
+          )}
         </div>
       )}
       {error && <p className="form-error" role="alert">{error}</p>}
