@@ -126,7 +126,9 @@ export function VideoRenderer({
         bytes[byteIndex] = binary.charCodeAt(byteIndex);
       }
       const mimeType = typeof data.mimeType === "string" ? data.mimeType : "image/png";
-      files.push(new File([bytes], "ai-scene-" + (index + 1) + ".png", { type: mimeType }));
+      const extension = mimeType.includes("jpeg") ? "jpg" : mimeType.includes("webp") ? "webp" : "png";
+      const imageBlob = new Blob([bytes.buffer as ArrayBuffer], { type: mimeType });
+      files.push(new File([imageBlob], "ai-scene-" + (index + 1) + "." + extension, { type: mimeType }));
       setVisualProgress({ completed: index + 1, total: segments.length });
     }
     return files;
