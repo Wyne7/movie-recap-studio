@@ -15,6 +15,7 @@ type RecapProject = {
   language: "Myanmar" | "English";
   duration: "3 min" | "5 min" | "10 min";
   voice: "Female" | "Male";
+  videoVisualMode: "original_clips" | "ai_visuals";
   status: ProjectStatus;
   createdAt: string;
   script: string | null;
@@ -30,6 +31,7 @@ type ProjectRow = {
   language: "Myanmar" | "English";
   duration: "3 min" | "5 min" | "10 min";
   voice: "Female" | "Male";
+  video_visual_mode: "original_clips" | "ai_visuals";
   status: ProjectStatus;
   created_at: string;
   source_type: "youtube";
@@ -47,6 +49,7 @@ function fromProjectRow(row: ProjectRow): RecapProject {
     voiceoverPath: row.voiceover_path ?? null,
     duration: row.duration,
     voice: row.voice,
+    videoVisualMode: row.video_visual_mode ?? "original_clips",
     status: row.status,
     createdAt: row.created_at,
   };
@@ -213,6 +216,7 @@ export default function HomePage() {
   const [language, setLanguage] = useState<"Myanmar" | "English">("Myanmar");
   const [duration, setDuration] = useState<"3 min" | "5 min" | "10 min">("5 min");
   const [recapType, setRecapType] = useState<"review" | "full_recap">("full_recap");
+  const [videoVisualMode, setVideoVisualMode] = useState<"original_clips" | "ai_visuals">("original_clips");
   const [voice, setVoice] = useState<"Female" | "Male">("Female");
   const [formError, setFormError] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
@@ -295,7 +299,7 @@ export default function HomePage() {
 
     void supabase
       .from("projects")
-      .select("id,title,source_url,source_type,language,duration,voice,status,created_at,script,voiceover_path")
+      .select("id,title,source_url,source_type,language,duration,voice,video_visual_mode,status,created_at,script,voiceover_path")
       .order("created_at", { ascending: false })
       .then(({ data, error }) => {
         if (!active) return;
@@ -345,6 +349,7 @@ export default function HomePage() {
         language,
         duration,
         voice,
+        videoVisualMode,
       };
 
       if (generateAfterSave) {
@@ -367,6 +372,7 @@ export default function HomePage() {
             language: updatedProject.language,
             duration: updatedProject.duration,
             voice: updatedProject.voice,
+            video_visual_mode: updatedProject.videoVisualMode,
           })
           .eq("id", updatedProject.id)
           .eq("user_id", user.id);
@@ -422,11 +428,12 @@ export default function HomePage() {
             language,
             duration,
             voice,
+            video_visual_mode: videoVisualMode,
             status: generateAfterSave ? "Analyzing" : "Draft",
             script: null,
           })
           .select(
-            "id,title,source_url,source_type,language,duration,voice,status,created_at,script"
+            "id,title,source_url,source_type,language,duration,voice,video_visual_mode,status,created_at,script"
           )
           .single();
 
@@ -446,6 +453,7 @@ export default function HomePage() {
           language,
           duration,
           voice,
+          videoVisualMode,
           status: generateAfterSave ? "Analyzing" : "Draft",
           createdAt: new Date().toISOString(),
           script: null,
@@ -1008,6 +1016,7 @@ export default function HomePage() {
             <label className="field-label">Project name <span>Optional</span><input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="e.g. The hidden truth behind…" maxLength={90} /></label>
             <label className="field-label">Video URL <span>Required</span><input value={sourceUrl} onChange={(event) => setSourceUrl(event.target.value)} placeholder="https://www.youtube.com/watch?v=..." type="url" required /></label>
             <div className="form-two-col"><label className="field-label">Recap style<select value={recapType} onChange={(event) => setRecapType(event.target.value as "review" | "full_recap")}><option value="review">Movie Review / Commentary</option><option value="full_recap">Full Movie Recap</option></select></label><label className="field-label">Narration language<select value={language} onChange={(event) => setLanguage(event.target.value as "Myanmar" | "English")}><option>Myanmar</option><option>English</option></select></label></div>
+            <label className="field-label">Video visuals<select value={videoVisualMode} onChange={(event) => setVideoVisualMode(event.target.value as "original_clips" | "ai_visuals")}><option value="original_clips">Original video clips (authorized footage)</option><option value="ai_visuals">AI-generated visuals</option></select><small style={{ display: "block", color: "#747484", fontWeight: 400, marginTop: 5 }}>Choose the visual source for your final recap video.</small></label>
             <label className="field-label">Recap length<select value={duration} onChange={(event) => setDuration(event.target.value as "3 min" | "5 min" | "10 min")}><option>3 min</option><option>5 min</option><option>10 min</option></select></label>
             <div className="field-label">Narrator voice</div><div className="voice-options"><button type="button" className={`voice-option ${voice === "Female" ? "selected" : ""}`} onClick={() => setVoice("Female")}><span className="voice-avatar">♀</span><span><strong>Female</strong><small>Warm narration</small></span><span className="radio-dot" /></button><button type="button" className={`voice-option ${voice === "Male" ? "selected" : ""}`} onClick={() => setVoice("Male")}><span className="voice-avatar male">♂</span><span><strong>Male</strong><small>Deep narration</small></span><span className="radio-dot" /></button></div><p className="modal-note">{language === "English" ? "English: the selected Male/Female option chooses a matching voice installed on this device when available. Voice names and gender labels vary by browser and operating system, so a default English voice may be used if no match is available." : "Myanmar: MyanmarTTS currently provides one built-in Burmese voice. The Male/Female setting does not change Burmese audio yet."}</p>
             {(isGenerating || isGeneratingVoiceover) && (
