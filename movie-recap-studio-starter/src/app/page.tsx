@@ -6,7 +6,7 @@ import type { User } from "@supabase/supabase-js";
 import type { HeadTTS as HeadTTSClient } from "@met4citizen/headtts";
 import { AuthPanel } from "@/components/auth-panel";
 import { VideoRenderer } from "@/components/video-renderer";
-import { ScenePlanBuilder } from "@/components/scene-plan-builder";\nimport type { SceneEditPlan } from "@/components/scene-plan-builder";
+import { ScenePlanBuilder, type SceneEditPlan } from "@/components/scene-plan-builder";
 import { getSupabaseBrowserClient, isSupabaseConfigured } from "@/lib/supabase/client";
 
 type ProjectStatus = "Draft" | "Analyzing" | "Ready to edit" | "Rendering" | "Completed";
@@ -231,7 +231,8 @@ export default function HomePage() {
   const [scriptProgress, setScriptProgress] = useState("");
   const [scriptElapsedSeconds, setScriptElapsedSeconds] = useState(0);
   const [generatedScript, setGeneratedScript] = useState("");
-  const [selectedProject, setSelectedProject] = useState<RecapProject | null>(null);\n  const [sceneEditPlan, setSceneEditPlan] = useState<SceneEditPlan | null>(null);
+  const [selectedProject, setSelectedProject] = useState<RecapProject | null>(null);
+  const [sceneEditPlan, setSceneEditPlan] = useState<SceneEditPlan | null>(null);
   const [voiceoverUrl, setVoiceoverUrl] = useState("");
   const [isGeneratingVoiceover, setIsGeneratingVoiceover] = useState(false);
   const [isPreviewingEnglish, setIsPreviewingEnglish] = useState(false);
