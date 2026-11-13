@@ -102,7 +102,13 @@ export function ScenePlanBuilder({ videoUrl, script, language, onPlanGenerated }
       <button type="button" className="secondary-button" onClick={generatePlan} disabled={busy || script.trim().length < 80}>
         {busy ? "AI is analyzing scenes…" : "Generate AI Scene Edit Plan →"}
       </button>
-      {busy && <p className="modal-note" role="status">Analyzing the YouTube video and matching scenes to narration. This may take a few minutes.</p>}
+      {busy && (
+        <div className="modal-note" role="status" aria-live="polite" style={{ display: "grid", gap: 7 }}>
+          <span>Step 1/2 · Gemini is analyzing the YouTube video and matching scenes to your narration. This may take a few minutes.</span>
+          <progress style={{ width: "100%", height: 8 }} />
+          <small>AI analysis does not provide a reliable percentage, so this bar shows activity rather than an invented percent.</small>
+        </div>
+      )}
       {error && <p className="form-error" role="alert">{error}</p>}
       {scenes.length > 0 && (
         <div style={{ display: "grid", gap: 8 }}>
@@ -118,9 +124,17 @@ export function ScenePlanBuilder({ videoUrl, script, language, onPlanGenerated }
               <p style={{ fontSize: 11, color: "#747484", margin: 0, lineHeight: 1.5 }}>{scene.narrationText}</p>
             </article>
           ))}
-          <p className="modal-note" style={{ margin: 0 }}>
-            The plan is ready for the MP4 renderer. In the renderer, paste a direct HTTPS media-file URL that you are authorized to use and that permits browser CORS access. AI narration timing is approximate; uncovered narration intervals show continuous source footage behind the selected scenes.
-          </p>
+          <div className="modal-note" style={{ margin: 0, display: "grid", gap: 6 }}>
+            <strong>Scene plan generated. What to do next:</strong>
+            <ol style={{ margin: "0 0 0 18px", padding: 0, lineHeight: 1.7 }}>
+              <li>Check the selected scene timestamps above.</li>
+              <li>Scroll to Video Rendering · MP4.</li>
+              <li>For Original Clips, provide an authorized direct video-file URL or choose an authorized local video file. A YouTube watch link alone cannot supply the footage for rendering.</li>
+              <li>Check that your narration WAV is loaded. The SRT will be included automatically when attached.</li>
+              <li>Press Render MP4, wait for completion, then preview and download the video.</li>
+            </ol>
+            <span>AI narration timing is approximate. The YouTube link is used for scene analysis only; it is not downloaded or converted into a video file.</span>
+          </div>
         </div>
       )}
     </section>
