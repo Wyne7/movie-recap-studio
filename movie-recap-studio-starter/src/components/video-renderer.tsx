@@ -311,7 +311,12 @@ export function VideoRenderer({
       let burnInSubtitleFilter = "";
       if (subtitleUrl) {
         setStatus("Loading subtitles for visible captions and an optional selectable subtitle track…");
-        await ffmpeg.writeFile("captions.srt", await fetchFile(subtitleUrl));
+        const subtitleBytes = await fetchFile(subtitleUrl);
+        const subtitleText = new TextDecoder().decode(subtitleBytes);
+        if (!subtitleText.includes("-->")) {
+          throw new Error("The subtitle file is empty or is not a valid SRT file. Upload the matching SRT again before rendering.");
+        }
+        await ffmpeg.writeFile("captions.srt", subtitleBytes);
         subtitleInputIndex = audioInputIndex + 1;
         args.push("-i", "captions.srt");
         // Burn captions into the picture so they are visible in every player,
@@ -345,7 +350,7 @@ export function VideoRenderer({
         "-c:a", "aac",
         "-b:a", "128k"
       );
-      if (subtitleInputIndex >= 0) args.push("-c:s", "mov_text");
+      if (subtitleInputIndex >= 0) args.push("-c:s", "mov_text", "-disposition:s:0", "default");
       args.push("-movflags", "+faststart", "recap-output.mp4");
 
       setStatus("Rendering MP4 in this browser. Keep this tab open…");
