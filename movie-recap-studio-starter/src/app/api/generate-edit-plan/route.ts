@@ -37,7 +37,7 @@ function getOutputText(data: any): string {
   return "";
 }
 
-function parsePlan(raw: string) {
+function parsePlan(raw: string, cueGroups: Array<{ startSeconds: number; endSeconds: number; text: string }> = []) {
   const cleaned = raw.replace(/^`{3}(?:json)?\s*/i, "").replace(/\s*`{3}$/i, "").trim();
   const parsed = JSON.parse(cleaned);
   if (!Array.isArray(parsed?.segments) || parsed.segments.length < 1 || parsed.segments.length > 40) {
@@ -46,12 +46,17 @@ function parsePlan(raw: string) {
   const segments = parsed.segments.map((item: any, index: number) => {
     const start = Number(item?.sourceStartSeconds);
     const end = Number(item?.sourceEndSeconds);
-    const narrationStart = Number(item?.narrationStartSeconds);
-    const narrationEnd = Number(item?.narrationEndSeconds);
-    const narration = String(item?.narrationText ?? "").trim();
+    const cueIndex = Number(item?.cueIndex);
+    const cue = cueGroups.length && Number.isInteger(cueIndex) ? cueGroups[cueIndex] : null;
+    const narrationStart = cue ? cue.startSeconds : Number(item?.narrationStartSeconds);
+    const narrationEnd = cue ? cue.endSeconds : Number(item?.narrationEndSeconds);
+    const narration = cue ? cue.text : String(item?.narrationText ?? "").trim();
     const reason = String(item?.sceneReason ?? "").trim();
     if (!Number.isFinite(start) || !Number.isFinite(end) || start < 0 || end <= start || end - start < 1 || end - start > 18) {
       throw new Error("The AI returned invalid source-scene timestamps. Please regenerate the scene plan.");
+    }
+    if (cueGroups.length && (!Number.isInteger(cueIndex) || !cue || cueIndex < 0 || cueIndex >= cueGroups.length)) {
+      throw new Error("The AI returned a scene that does not match an SRT time window. Please regenerate the scene plan.");
     }
     if (!Number.isFinite(narrationStart) || !Number.isFinite(narrationEnd) || narrationStart < 0 || narrationEnd <= narrationStart || narrationEnd - narrationStart > 180) {
       throw new Error("The AI returned invalid narration timing. Please regenerate the scene plan.");
@@ -63,8 +68,8 @@ function parsePlan(raw: string) {
       index: index + 1,
       sourceStartSeconds: Math.round(start * 10) / 10,
       sourceEndSeconds: Math.round(end * 10) / 10,
-      narrationStartSeconds: Math.round(narrationStart * 10) / 10,
-      narrationEndSeconds: Math.round(narrationEnd * 10) / 10,
+      narrationStartSeconds: Math.round(narrationStart * 1000) / 1000,
+      narrationEndSeconds: Math.round(narrationEnd * 1000) / 1000,
       narrationText: narration.slice(0, 1200),
       sceneReason: reason.slice(0, 300),
     };
@@ -102,6 +107,19 @@ export async function POST(request: NextRequest) {
     const language = body.language === "English" ? "English" : "Burmese";
     const style = ["cinematic", "fast_paced", "documentary"].includes(body.style) ? body.style : "cinematic";
     const aspectRatio = body.aspectRatio === "9:16" ? "9:16" : "16:9";
+    const audioDuration = Number(body.audioDuration);
+    const rawCueGroups = Array.isArray(body.subtitleCues) ? body.subtitleCues : [];
+    const cueGroups = rawCueGroups.slice(0, 40).map((cue: any) => ({
+      startSeconds: Number(cue?.startSeconds),
+      endSeconds: Number(cue?.endSeconds),
+      text: String(cue?.text ?? "").trim().slice(0, 2400),
+    })).filter((cue: any) => Number.isFinite(cue.startSeconds) && Number.isFinite(cue.endSeconds) &&
+      cue.startSeconds >= 0 && cue.endSeconds > cue.startSeconds && cue.endSeconds <= audioDuration + 0.1 && cue.text);
+
+    if (!Number.isFinite(audioDuration) || audioDuration <= 0 || audioDuration > 600 ||
+      cueGroups.length < 1 || cueGroups.length !== rawCueGroups.length) {
+      return NextResponse.json({ success: false, error: "A valid WAV duration and up to 40 matching SRT time windows are required." }, { status: 400 });
+    }
 
     if (!isValidYouTubeUrl(videoUrl)) {
       return NextResponse.json({ success: false, error: "Enter a valid public YouTube URL." }, { status: 400 });
@@ -120,12 +138,17 @@ export async function POST(request: NextRequest) {
       "Avoid repeating the same source moment unless it is genuinely relevant. Prefer scene changes and action that supports the narration.",
       "Editing style: " + style + ". Output aspect ratio: " + aspectRatio + ".",
       "Narration language: " + language + ".",
-      "For each segment, include narrationStartSeconds and narrationEndSeconds: approximate positions in the narration audio timeline (seconds from the beginning of the narration) when the supplied narration excerpt is spoken. These must be positive, ordered, and no more than 180 seconds apart.",
-      "Also include a short exact excerpt from the supplied narration that this footage should accompany, and a concise visual reason.",
-      "Do not invent source events, dialogue, or timestamps. If the video is inaccessible or the scene cannot be verified, return an error object instead of guessing.",
+      "The supplied SRT time windows are authoritative. They are exact positions on the existing WAV narration timeline, not estimates.",
+      "Return exactly one scene per supplied cue group, preserving each cueIndex exactly once. Do not change or estimate narration start/end times.",
+      "For every cue group, select source footage that visually matches its subtitle text and the nearby narration script. Use only source timestamps you can verify in the actual video.",
+      "Each source segment must be between 1 and 18 seconds. Do not reuse the same source moment unless necessary.",
+      "Return sourceStartSeconds, sourceEndSeconds, cueIndex, and sceneReason for each item. Do not return narration timing fields.",
+      "If the video is inaccessible or a scene cannot be verified, return an error object instead of guessing.",
       "Return ONLY valid JSON, no markdown, in this exact shape:",
-      '{"segments":[{"sourceStartSeconds":12.5,"sourceEndSeconds":20.0,"narrationStartSeconds":0.0,"narrationEndSeconds":7.5,"narrationText":"short excerpt from the script","sceneReason":"what is visible and why it matches"}]}',
-      "Narration script:",
+      '{"segments":[{"cueIndex":0,"sourceStartSeconds":12.5,"sourceEndSeconds":20.0,"sceneReason":"what is visible and why it matches"}]}',
+      "Exact SRT windows (seconds from the start of the WAV) and their text:",
+      JSON.stringify(cueGroups),
+      "Narration script for additional context:",
       script,
     ].join("\n\n");
 
@@ -161,8 +184,8 @@ export async function POST(request: NextRequest) {
         const raw = getOutputText(data);
         if (!raw) return NextResponse.json({ success: false, error: "Gemini returned no scene plan. The video may be private or unavailable." }, { status: 502 });
         try {
-          const plan = parsePlan(raw);
-          return NextResponse.json({ success: true, provider: "Google Gemini API", model, aspectRatio, style, ...plan });
+          const plan = parsePlan(raw, cueGroups);
+          return NextResponse.json({ success: true, provider: "Google Gemini API", model, aspectRatio, style, timingSource: "srt", ...plan });
         } catch (error) {
           return NextResponse.json({ success: false, error: error instanceof Error ? error.message : "Gemini returned an invalid scene plan." }, { status: 502 });
         }
