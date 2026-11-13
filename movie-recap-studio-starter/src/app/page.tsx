@@ -1185,10 +1185,12 @@ export default function HomePage() {
             <label className="field-label">Recap length<select value={duration} onChange={(event) => setDuration(event.target.value as "3 min" | "5 min" | "10 min")}><option>3 min</option><option>5 min</option><option>10 min</option></select></label>
             <div className="field-label">Narrator voice</div><div className="voice-options"><button type="button" className={`voice-option ${voice === "Female" ? "selected" : ""}`} onClick={() => setVoice("Female")}><span className="voice-avatar">♀</span><span><strong>Female</strong><small>Warm narration</small></span><span className="radio-dot" /></button><button type="button" className={`voice-option ${voice === "Male" ? "selected" : ""}`} onClick={() => setVoice("Male")}><span className="voice-avatar male">♂</span><span><strong>Male</strong><small>Deep narration</small></span><span className="radio-dot" /></button></div><p className="modal-note">{language === "English" ? "English: the selected Male/Female option chooses a matching voice installed on this device when available. Voice names and gender labels vary by browser and operating system, so a default English voice may be used if no match is available." : "Myanmar: MyanmarTTS currently provides one built-in Burmese voice. The Male/Female setting does not change Burmese audio yet."}</p>
             {(isGenerating || isGeneratingVoiceover) && (
-              <div className="modal-note" role="status" aria-live="polite">
+              <div className="modal-note" role="status" aria-live="polite" style={{ display: "grid", gap: 7 }}>
                 {isGeneratingVoiceover
                   ? "AI is generating your voiceover. Keep this window open; do not submit again."
                   : <>{scriptProgress || "Gemini is processing your video..."} Elapsed: {Math.floor(scriptElapsedSeconds / 60)}m {scriptElapsedSeconds % 60}s. Keep this window open; do not submit again.</>}
+                <progress style={{ width: "100%", height: 9 }} />
+                <small>Processing is still running. This service does not report a reliable percentage yet.</small>
               </div>
             )}
             {selectedProject && !generatedScript && (
@@ -1228,7 +1230,7 @@ export default function HomePage() {
                   <h3 style={{ fontSize: 12, margin: "0 0 5px" }}>English AI Voiceover + Timed Subtitles</h3>
                   <p style={{ fontSize: 11, color: "#747484", margin: 0 }}>Free, open-source Kokoro voice generation runs in this browser. Choose Male or Female in the project settings. The first use downloads the voice model; keep this page open until generation finishes.</p>
                 </div>
-                {isLoadingEnglishAssets && <p className="modal-note" role="status">Loading your saved English WAV + SRT files… Please wait. No voice generation is running.</p>}
+                {isLoadingEnglishAssets && <div className="modal-note" role="status" aria-live="polite" style={{ display: "grid", gap: 7 }}><span>Loading your saved English WAV + SRT files… Please wait. No voice generation is running.</span><progress style={{ width: "100%", height: 9 }} /></div>}
                 {selectedProject.englishAudioPath && selectedProject.englishSrtPath ? (
                   <>
                     <p className="modal-note" style={{ margin: 0 }}>{englishAudioUrl && englishSrtUrl ? "Your saved WAV + SRT are loaded and ready to use." : "This project already has saved WAV + SRT files. They load automatically when the project opens."}</p>
@@ -1241,7 +1243,7 @@ export default function HomePage() {
                     {isGeneratingEnglishAudio ? "Generating English voice + subtitles..." : "Generate English WAV + SRT →"}
                   </button>
                 )}
-                {isGeneratingEnglishAudio && <p className="modal-note" role="status">{englishProgress || "Preparing voice model..."}</p>}
+                {isGeneratingEnglishAudio && <div className="modal-note" role="status" aria-live="polite" style={{ display: "grid", gap: 7 }}><span>{englishProgress || "Preparing voice model..."}</span><progress style={{ width: "100%", height: 9 }} /></div>}
                 {(!selectedProject.englishAudioPath || !selectedProject.englishSrtPath) && (
                   <div style={{ display: "grid", gap: 7 }}>
                     <p className="modal-note" style={{ margin: 0 }}>Already generated these files earlier? Select your downloaded WAV and matching SRT here to save them without running voice generation again.</p>
@@ -1275,7 +1277,7 @@ export default function HomePage() {
                 <button type="button" className="secondary-button" onClick={generateVoiceover} disabled={isGenerating || isGeneratingVoiceover}>
                   {isGeneratingVoiceover ? "Generating voiceover..." : selectedProject.voiceoverPath ? "Regenerate Voiceover" : "Generate Voiceover →"}
                 </button>
-                {isGeneratingVoiceover && <p className="modal-note">One voice generation request is running. The first request may take longer while the free service wakes up.</p>}
+                {isGeneratingVoiceover && <div className="modal-note" role="status" aria-live="polite" style={{ display: "grid", gap: 7 }}><span>One voice generation request is running. The first request may take longer while the free service wakes up.</span><progress style={{ width: "100%", height: 9 }} /></div>}
               </section>
             )}
                         {selectedProject && (
@@ -1288,6 +1290,7 @@ export default function HomePage() {
                 subtitleUrl={selectedProject.language === "English" ? englishSrtUrl : undefined}
                 projectTitle={selectedProject.title}
                 expectedDuration={selectedProject.duration}
+                sourceVideoUrl={selectedProject.sourceUrl}
                 scenePlan={sceneEditPlan}
               />
             )}
