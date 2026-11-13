@@ -343,9 +343,10 @@ export function StoryStudio() {
           <select value={narrator} onChange={(event) => {
             setNarrator(event.target.value as "Female" | "Male");
             clearVoiceAssets();
-          }} disabled={busy || voiceBusy}>
+          }} disabled={busy || voiceBusy || language === "Myanmar"}>
             <option value="Female">Female</option><option value="Male">Male</option>
           </select>
+          {language === "Myanmar" ? <small style={{ color: "#747484" }}>MyanmarTTS currently uses its default voice.</small> : null}
         </label>
         <label className="field-label">Visual style
           <select value={visualStyle} onChange={(event) => {
