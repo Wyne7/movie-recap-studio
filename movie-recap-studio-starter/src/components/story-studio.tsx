@@ -340,7 +340,10 @@ export function StoryStudio() {
           </select>
         </label>
         <label className="field-label">Narrator
-          <select value={narrator} onChange={(event) => setNarrator(event.target.value as "Female" | "Male")} disabled={busy || voiceBusy}>
+          <select value={narrator} onChange={(event) => {
+            setNarrator(event.target.value as "Female" | "Male");
+            clearVoiceAssets();
+          }} disabled={busy || voiceBusy}>
             <option value="Female">Female</option><option value="Male">Male</option>
           </select>
         </label>
@@ -404,6 +407,7 @@ export function StoryStudio() {
                 expectedDuration={durationSeconds === 60 ? "1 min" : durationSeconds === 90 ? "1.5 min" : durationSeconds === 120 ? "2 min" : "3 min"}
                 sourceVideoUrl=""
                 scenePlan={scenePlan}
+                sectionId="story-video-rendering-section"
               />
             </div>
           )}
