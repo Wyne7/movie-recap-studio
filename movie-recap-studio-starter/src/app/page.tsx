@@ -236,6 +236,8 @@ export default function HomePage() {
   const [isGeneratingEnglishAudio, setIsGeneratingEnglishAudio] = useState(false);
   const [englishAudioUrl, setEnglishAudioUrl] = useState("");
   const [englishSrtUrl, setEnglishSrtUrl] = useState("");
+  const [existingEnglishWav, setExistingEnglishWav] = useState<File | null>(null);
+  const [existingEnglishSrt, setExistingEnglishSrt] = useState<File | null>(null);
   const [englishProgress, setEnglishProgress] = useState("");
   const headTtsRef = useRef<HeadTTSClient | null>(null);
 
@@ -401,6 +403,12 @@ export default function HomePage() {
         current.map((project) => project.id === updatedProject.id ? updatedProject : project)
       );
       setSelectedProject(updatedProject);
+      if (englishAssetsNeedRefresh) {
+        if (englishAudioUrl) URL.revokeObjectURL(englishAudioUrl);
+        if (englishSrtUrl) URL.revokeObjectURL(englishSrtUrl);
+        setEnglishAudioUrl("");
+        setEnglishSrtUrl("");
+      }
       setGeneratedScript(updatedProject.script ?? "");
       setModalOpen(false);
       setNotice("Project changes saved. No AI generation was performed.");
@@ -971,6 +979,59 @@ export default function HomePage() {
     }
   }
 
+  async function saveExistingEnglishAssets() {
+    if (!selectedProject || !existingEnglishWav || !existingEnglishSrt) {
+      setFormError("Choose both an existing WAV file and its matching SRT subtitle file.");
+      return;
+    }
+    const supabase = getSupabaseBrowserClient();
+    if (isSupabaseConfigured && (!supabase || !user)) {
+      setFormError("Sign in again before saving the existing English files.");
+      return;
+    }
+    setIsGeneratingEnglishAudio(true);
+    setFormError("");
+    setEnglishProgress("Saving your existing WAV and SRT files to this project...");
+    try {
+      let englishAudioPath: string | null = null;
+      let englishSrtPath: string | null = null;
+      if (isSupabaseConfigured && supabase && user) {
+        const projectFolder = user.id + "/" + selectedProject.id + "/";
+        englishAudioPath = projectFolder + "english-voiceover.wav";
+        englishSrtPath = projectFolder + "english-subtitles.srt";
+        const { error: audioError } = await supabase.storage.from("voiceovers").upload(englishAudioPath, existingEnglishWav, {
+          contentType: "audio/wav", cacheControl: "3600", upsert: true,
+        });
+        if (audioError) throw new Error("Could not save the WAV file: " + audioError.message);
+        const { error: srtError } = await supabase.storage.from("voiceovers").upload(englishSrtPath, existingEnglishSrt, {
+          contentType: "text/plain", cacheControl: "3600", upsert: true,
+        });
+        if (srtError) throw new Error("Could not save the SRT file: " + srtError.message);
+        const { error: updateError } = await supabase.from("projects").update({
+          english_audio_path: englishAudioPath,
+          english_srt_path: englishSrtPath,
+        }).eq("id", selectedProject.id).eq("user_id", user.id);
+        if (updateError) throw new Error("Files were uploaded but the project could not be updated: " + updateError.message);
+      }
+      if (englishAudioUrl) URL.revokeObjectURL(englishAudioUrl);
+      if (englishSrtUrl) URL.revokeObjectURL(englishSrtUrl);
+      setEnglishAudioUrl(URL.createObjectURL(existingEnglishWav));
+      setEnglishSrtUrl(URL.createObjectURL(existingEnglishSrt));
+      const updatedProject = { ...selectedProject, englishAudioPath, englishSrtPath };
+      setSelectedProject(updatedProject);
+      setProjects((current) => current.map((project) => project.id === updatedProject.id ? updatedProject : project));
+      setExistingEnglishWav(null);
+      setExistingEnglishSrt(null);
+      setEnglishProgress("");
+      setNotice(isSupabaseConfigured ? "Your existing English WAV + SRT are saved to this project. They will be reused without generating again." : "Existing WAV + SRT loaded in this browser.");
+    } catch (error) {
+      setEnglishProgress("");
+      setFormError(error instanceof Error ? error.message : "Could not save the existing English files.");
+    } finally {
+      setIsGeneratingEnglishAudio(false);
+    }
+  }
+
   function downloadEnglishAudio() {
     if (!englishAudioUrl) return;
     const safeTitle = (selectedProject?.title || "movie-recap").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
@@ -1145,6 +1206,14 @@ export default function HomePage() {
                   {isGeneratingEnglishAudio ? "Generating English voice + subtitles..." : selectedProject.englishAudioPath && selectedProject.englishSrtPath ? "Regenerate English WAV + SRT" : "Generate English WAV + SRT →"}
                 </button>
                 {isGeneratingEnglishAudio && <p className="modal-note" role="status">{englishProgress || "Preparing voice model..."}</p>}
+                {(!selectedProject.englishAudioPath || !selectedProject.englishSrtPath) && (
+                  <div style={{ display: "grid", gap: 7 }}>
+                    <p className="modal-note" style={{ margin: 0 }}>Already generated these files earlier? Select your downloaded WAV and matching SRT here to save them without running voice generation again.</p>
+                    <label className="field-label">Existing English WAV<input type="file" accept=".wav,audio/wav" onChange={(event) => setExistingEnglishWav(event.target.files?.[0] ?? null)} /></label>
+                    <label className="field-label">Existing SRT subtitles<input type="file" accept=".srt,text/plain" onChange={(event) => setExistingEnglishSrt(event.target.files?.[0] ?? null)} /></label>
+                    <button type="button" className="secondary-button" onClick={saveExistingEnglishAssets} disabled={!existingEnglishWav || !existingEnglishSrt || isGeneratingEnglishAudio}>Save existing WAV + SRT to project</button>
+                  </div>
+                )}
                 {englishAudioUrl && (
                   <div style={{ display: "grid", gap: 9 }}>
                     <audio controls preload="metadata" src={englishAudioUrl} style={{ width: "100%" }}>Your browser does not support audio playback.</audio>
