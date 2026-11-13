@@ -661,6 +661,7 @@ export default function HomePage() {
     setLanguage(project.language);
     setDuration(project.duration);
     setVoice(project.voice);
+    setVideoVisualMode(project.videoVisualMode ?? "original_clips");
     setGeneratedScript(project.script ?? "");
     setVoiceoverUrl("");
     setFormError("");
