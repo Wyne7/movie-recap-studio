@@ -348,8 +348,11 @@ export default function HomePage() {
         return;
       }
 
+      const englishAssetsNeedRefresh = selectedProject.voice !== voice;
       const updatedProject: RecapProject = {
         ...selectedProject,
+        englishAudioPath: englishAssetsNeedRefresh ? null : selectedProject.englishAudioPath,
+        englishSrtPath: englishAssetsNeedRefresh ? null : selectedProject.englishSrtPath,
         title: title.trim() || "Untitled movie recap",
         sourceUrl: sourceUrl.trim(),
         language,
@@ -379,6 +382,7 @@ export default function HomePage() {
             duration: updatedProject.duration,
             voice: updatedProject.voice,
             video_visual_mode: updatedProject.videoVisualMode,
+            ...(englishAssetsNeedRefresh ? { english_audio_path: null, english_srt_path: null } : {}),
           })
           .eq("id", updatedProject.id)
           .eq("user_id", user.id);
@@ -386,6 +390,10 @@ export default function HomePage() {
         if (error) {
           setFormError("Could not update project: " + error.message);
           return;
+        }
+        if (englishAssetsNeedRefresh) {
+          const oldAssets = [selectedProject.englishAudioPath, selectedProject.englishSrtPath].filter((path): path is string => Boolean(path));
+          if (oldAssets.length) await supabase.storage.from("voiceovers").remove(oldAssets);
         }
       }
 
@@ -637,7 +645,7 @@ export default function HomePage() {
       setScriptProgress("Gemini finished. Saving your recap script...");
       const { error: updateError } = await supabase
         .from("projects")
-        .update({ script, status: "Ready to edit" })
+        .update({ script, status: "Ready to edit", english_audio_path: null, english_srt_path: null })
         .eq("id", project.id)
         .eq("user_id", user.id);
 
@@ -645,7 +653,9 @@ export default function HomePage() {
         throw new Error("Script was generated but could not be saved: " + updateError.message);
       }
 
-      const completedProject = { ...project, script, status: "Ready to edit" as ProjectStatus };
+      const oldEnglishAssets = [project.englishAudioPath, project.englishSrtPath].filter((path): path is string => Boolean(path));
+      if (oldEnglishAssets.length) await supabase.storage.from("voiceovers").remove(oldEnglishAssets);
+      const completedProject = { ...project, script, englishAudioPath: null, englishSrtPath: null, status: "Ready to edit" as ProjectStatus };
       setProjects((current) =>
         current.map((item) => item.id === project.id ? completedProject : item)
       );
