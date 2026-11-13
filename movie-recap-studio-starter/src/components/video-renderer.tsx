@@ -102,7 +102,7 @@ export function VideoRenderer({
     setVisualProgress({ completed: 0, total: segments.length });
     for (let index = 0; index < segments.length; index += 1) {
       const segment = segments[index];
-      setStatus("Generating AI visual " + (index + 1) + " of " + segments.length + " from the YouTube scene plan…");
+      setStatus("Generating AI visual " + (index + 1) + " of " + segments.length + (scenePlan.sourceType === "story" ? " from the original story scene…" : " from the YouTube scene plan…"));
       const response = await fetch("/api/generate-ai-visual", {
         method: "POST",
         headers: {
@@ -142,8 +142,9 @@ export function VideoRenderer({
       setError("Paste an authorized direct video-file URL or use the optional local-file fallback.");
       return;
     }
-    if (visualMode === "ai_visuals" && imageFiles.length === 0 && generatedImageFiles.length === 0 && (!scenePlan?.segments.length || !sourceVideoUrl)) {
-      setError("Generate AI Scene Selection first. The app will then create visuals from your YouTube link automatically, or you can upload your own images.");
+    if (visualMode === "ai_visuals" && imageFiles.length === 0 && generatedImageFiles.length === 0 &&
+        (!scenePlan?.segments.length || (!sourceVideoUrl && scenePlan.sourceType !== "story"))) {
+      setError("Generate AI Scene Selection or an AI story storyboard first. The app can create original visuals from either source, or you can upload your own images.");
       return;
     }
     if (videoFile && videoFile.size > MAX_VIDEO_BYTES) {
