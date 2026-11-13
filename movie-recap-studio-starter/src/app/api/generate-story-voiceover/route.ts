@@ -90,7 +90,7 @@ function wrapCaption(value: string) {
     } else current = next;
   }
   if (current) lines.push(current);
-  return lines.slice(0, 3).join("\n");
+  return lines.join("\n");
 }
 
 export async function POST(request: NextRequest) {
