@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "node scripts/patch-ffmpeg-worker.cjs && next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "postinstall": "patch-package"
