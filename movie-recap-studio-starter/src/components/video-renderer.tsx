@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { FFmpeg as FFmpegInstance } from "@ffmpeg/ffmpeg";
+import type { SceneEditPlan } from "@/components/scene-plan-builder";
 
 type VideoRendererProps = {
   visualMode: "original_clips" | "ai_visuals";
@@ -9,6 +10,7 @@ type VideoRendererProps = {
   subtitleUrl?: string;
   projectTitle: string;
   expectedDuration: "3 min" | "5 min" | "10 min";
+  scenePlan?: SceneEditPlan | null;
 };
 
 const CORE_BASE_URL = "https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/umd";
@@ -35,6 +37,7 @@ export function VideoRenderer({
   const ffmpegLoadedRef = useRef(false);
   const outputUrlRef = useRef("");
   const [videoFile, setVideoFile] = useState<File | null>(null);
+  const [authorizedMediaUrl, setAuthorizedMediaUrl] = useState("");
   const [imageFiles, setImageFiles] = useState<File[]>([]);
   const [audioDuration, setAudioDuration] = useState(0);
   const [isRendering, setIsRendering] = useState(false);
@@ -131,13 +134,80 @@ export function VideoRenderer({
       let subtitleInputIndex = -1;
       let videoMap: string;
 
-      if (visualMode === "original_clips" && videoFile) {
-        const extension = (videoFile.name.split(".").pop() || "mp4").toLowerCase();
-        const safeExtension = ["mp4", "mov", "webm", "m4v"].includes(extension) ? extension : "mp4";
-        await ffmpeg.writeFile("source-video." + safeExtension, await fetchFile(videoFile));
-        args.push("-stream_loop", "-1", "-i", "source-video." + safeExtension);
-        audioInputIndex = 1;
-        videoMap = "0:v:0";
+      if (visualMode === "original_clips" && (videoFile || authorizedMediaUrl.trim())) {
+        let sourceBlob: Blob;
+        if (authorizedMediaUrl.trim()) {
+          const mediaUrl = new URL(authorizedMediaUrl.trim());
+          if (mediaUrl.protocol !== "https:") throw new Error("For safety, the direct media URL must use HTTPS.");
+          setStatus("Fetching the authorized direct video URL in your browser…");
+          const mediaResponse = await fetch(mediaUrl.toString(), { mode: "cors", cache: "no-store" });
+          if (!mediaResponse.ok) throw new Error("The direct video URL could not be read. Check that the link is public and allows browser CORS access.");
+          const declaredSize = Number(mediaResponse.headers.get("content-length") || 0);
+          if (declaredSize > MAX_VIDEO_BYTES) throw new Error("The direct video is larger than the 500 MB browser-rendering limit.");
+          const mediaType = (mediaResponse.headers.get("content-type") || "").toLowerCase();
+          if (mediaType && !mediaType.startsWith("video/") && !mediaType.includes("octet-stream")) {
+            throw new Error("The direct URL did not return a video file. Use a direct MP4/MOV/WebM media URL, not a webpage or YouTube watch link.");
+          }
+          sourceBlob = await mediaResponse.blob();
+          if (!sourceBlob.size || sourceBlob.size > MAX_VIDEO_BYTES) throw new Error("The downloaded video is empty or exceeds the 500 MB limit.");
+        } else {
+          sourceBlob = videoFile as File;
+        }
+        await ffmpeg.writeFile("source-video.mp4", await fetchFile(sourceBlob));
+        if (useScenePlan && scenePlan?.segments.length) {
+          const validSegments = scenePlan.segments
+            .filter((segment) => Number.isFinite(segment.sourceStartSeconds) &&
+              Number.isFinite(segment.sourceEndSeconds) &&
+              Number.isFinite(segment.narrationStartSeconds) &&
+              Number.isFinite(segment.narrationEndSeconds) &&
+              segment.sourceStartSeconds >= 0 &&
+              segment.sourceEndSeconds > segment.sourceStartSeconds &&
+              segment.narrationStartSeconds >= 0 &&
+              segment.narrationEndSeconds > segment.narrationStartSeconds &&
+              segment.narrationStartSeconds < duration)
+            .map((segment) => ({
+              ...segment,
+              narrationEndSeconds: Math.min(duration, segment.narrationEndSeconds),
+            }))
+            .filter((segment) => segment.narrationEndSeconds > segment.narrationStartSeconds)
+            .sort((a, b) => a.narrationStartSeconds - b.narrationStartSeconds)
+            .slice(0, 40);
+          if (!validSegments.length) throw new Error("The AI scene plan has no usable timestamps within this narration's duration. Generate a new scene plan.");
+          args.push("-f", "lavfi", "-i", "color=c=black:s=" + width + "x" + height + ":r=30:d=" + duration.toFixed(3));
+          for (const segment of validSegments) {
+            const sourceLength = segment.sourceEndSeconds - segment.sourceStartSeconds;
+            args.push("-ss", segment.sourceStartSeconds.toFixed(3), "-t", sourceLength.toFixed(3), "-i", "source-video.mp4");
+          }
+          audioInputIndex = 1 + validSegments.length;
+          const filters = ["[0:v]format=yuv420p[base0]"];
+          let previous = "base0";
+          validSegments.forEach((segment, index) => {
+            const inputIndex = index + 1;
+            const sourceLength = segment.sourceEndSeconds - segment.sourceStartSeconds;
+            const targetStart = segment.narrationStartSeconds;
+            const targetLength = segment.narrationEndSeconds - segment.narrationStartSeconds;
+            const clipLabel = "clip" + index;
+            const outputLabel = "base" + (index + 1);
+            filters.push(
+              "[" + inputIndex + ":v]trim=duration=" + sourceLength.toFixed(3) +
+              ",setpts=(PTS-STARTPTS)*" + (targetLength / sourceLength).toFixed(6) +
+              "+" + targetStart.toFixed(3) + "/TB,scale=" + width + ":" + height +
+              ":force_original_aspect_ratio=increase,crop=" + width + ":" + height +
+              ",setsar=1,fps=30,format=yuv420p[" + clipLabel + "]"
+            );
+            filters.push(
+              "[" + previous + "][" + clipLabel + "]overlay=eof_action=pass:shortest=0:enable='between(t," +
+              targetStart.toFixed(3) + "," + segment.narrationEndSeconds.toFixed(3) + ")'[" + outputLabel + "]"
+            );
+            previous = outputLabel;
+          });
+          args.push("-filter_complex", filters.join(";"));
+          videoMap = "[" + previous + "]";
+        } else {
+          args.push("-stream_loop", "-1", "-i", "source-video.mp4");
+          audioInputIndex = 2;
+          videoMap = "1:v:0";
+        }
       } else {
         const imageCount = imageFiles.length;
         const secondsPerImage = duration / imageCount;
@@ -237,7 +307,7 @@ export function VideoRenderer({
             disabled={isRendering}
           />
           <small style={{ display: "block", color: "#747484", fontWeight: 400, marginTop: 4 }}>
-            Choose a video you own or have permission to reuse. One file per render; maximum 500 MB.
+            Choose a video you own or have permission to reuse. One file per render; maximum 500 MB. When an AI scene plan is available, you can instead paste a direct media URL below.
           </small>
         </label>
       ) : (
@@ -257,7 +327,7 @@ export function VideoRenderer({
       )}
 
       <div className="modal-note">
-        Narration length: <strong>{durationLabel}</strong> · Project setting: <strong>{expectedDuration}</strong>
+        Narration length: <strong>{durationLabel}</strong> · Project setting: <strong>{expectedDuration}</strong>{scenePlan ? " · AI edit plan: " + scenePlan.segments.length + " scenes · " + scenePlan.aspectRatio : ""}
         {subtitleUrl ? " · Timed SRT subtitles will be embedded as a selectable subtitle track." : " · No subtitle file is attached to this voiceover."}
       </div>
 
@@ -265,7 +335,7 @@ export function VideoRenderer({
         type="button"
         className="primary-button"
         onClick={renderVideo}
-        disabled={isRendering || !audioDuration || (visualMode === "original_clips" ? !videoFile : imageFiles.length === 0)}
+        disabled={isRendering || !audioDuration || (visualMode === "original_clips" ? (!videoFile && !(scenePlan?.segments.length && authorizedMediaUrl.trim())) : imageFiles.length === 0)}
       >
         {isRendering ? "Rendering MP4…" : "Render MP4 video →"}
       </button>
