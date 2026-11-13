@@ -7,6 +7,8 @@ type Scene = {
   index: number;
   sourceStartSeconds: number;
   sourceEndSeconds: number;
+  narrationStartSeconds: number;
+  narrationEndSeconds: number;
   narrationText: string;
   sceneReason: string;
 };
@@ -101,7 +103,7 @@ export function ScenePlanBuilder({ videoUrl, script, language }: Props) {
           {scenes.map((scene) => (
             <article key={scene.index} style={{ border: "1px solid #ececf1", borderRadius: 7, padding: 9, display: "grid", gap: 5 }}>
               <strong style={{ fontSize: 11 }}>
-                Scene {scene.index} · {timestamp(scene.sourceStartSeconds)}–{timestamp(scene.sourceEndSeconds)}
+                Scene {scene.index} · Source {timestamp(scene.sourceStartSeconds)}–{timestamp(scene.sourceEndSeconds)} · Narration {timestamp(scene.narrationStartSeconds)}–{timestamp(scene.narrationEndSeconds)}
               </strong>
               <p style={{ fontSize: 11, margin: 0, lineHeight: 1.5 }}>{scene.sceneReason}</p>
               <p style={{ fontSize: 11, color: "#747484", margin: 0, lineHeight: 1.5 }}>{scene.narrationText}</p>
