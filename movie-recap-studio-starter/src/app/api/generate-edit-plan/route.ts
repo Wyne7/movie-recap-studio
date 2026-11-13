@@ -43,6 +43,7 @@ function parsePlan(raw: string, cueGroups: Array<{ startSeconds: number; endSeco
   if (!Array.isArray(parsed?.segments) || parsed.segments.length < 1 || parsed.segments.length > 40) {
     throw new Error("The AI did not return a usable scene list. Please try again.");
   }
+  const usedCueIndexes = new Set<number>();
   const segments = parsed.segments.map((item: any, index: number) => {
     const start = Number(item?.sourceStartSeconds);
     const end = Number(item?.sourceEndSeconds);
@@ -55,9 +56,10 @@ function parsePlan(raw: string, cueGroups: Array<{ startSeconds: number; endSeco
     if (!Number.isFinite(start) || !Number.isFinite(end) || start < 0 || end <= start || end - start < 1 || end - start > 18) {
       throw new Error("The AI returned invalid source-scene timestamps. Please regenerate the scene plan.");
     }
-    if (cueGroups.length && (!Number.isInteger(cueIndex) || !cue || cueIndex < 0 || cueIndex >= cueGroups.length)) {
-      throw new Error("The AI returned a scene that does not match an SRT time window. Please regenerate the scene plan.");
+    if (cueGroups.length && (!Number.isInteger(cueIndex) || !cue || cueIndex < 0 || cueIndex >= cueGroups.length || usedCueIndexes.has(cueIndex))) {
+      throw new Error("The AI returned a missing or duplicate SRT time window. Please regenerate the scene plan.");
     }
+    if (cueGroups.length) usedCueIndexes.add(cueIndex);
     if (!Number.isFinite(narrationStart) || !Number.isFinite(narrationEnd) || narrationStart < 0 || narrationEnd <= narrationStart || narrationEnd - narrationStart > 180) {
       throw new Error("The AI returned invalid narration timing. Please regenerate the scene plan.");
     }
@@ -74,6 +76,9 @@ function parsePlan(raw: string, cueGroups: Array<{ startSeconds: number; endSeco
       sceneReason: reason.slice(0, 300),
     };
   });
+  if (cueGroups.length && usedCueIndexes.size !== cueGroups.length) {
+    throw new Error("The AI did not select a scene for every SRT time window. Please regenerate the scene plan.");
+  }
   return { segments };
 }
 
