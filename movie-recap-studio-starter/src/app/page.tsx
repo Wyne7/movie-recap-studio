@@ -7,6 +7,7 @@ import type { HeadTTS as HeadTTSClient } from "@met4citizen/headtts";
 import { AuthPanel } from "@/components/auth-panel";
 import { VideoRenderer } from "@/components/video-renderer";
 import { ScenePlanBuilder, type SceneEditPlan } from "@/components/scene-plan-builder";
+import { StoryStudio } from "@/components/story-studio";
 import { getSupabaseBrowserClient, isSupabaseConfigured } from "@/lib/supabase/client";
 
 type ProjectStatus = "Draft" | "Analyzing" | "Ready to edit" | "Rendering" | "Completed";
@@ -1106,6 +1107,7 @@ export default function HomePage() {
         <nav className="side-nav" aria-label="Main navigation">
           <a className="nav-link active" href="#home"><span className="nav-icon">▦</span> Overview</a>
           <button className="nav-link" onClick={() => { setSelectedProject(null); setTitle(""); setSourceUrl(""); setLanguage("Myanmar"); setDuration("5 min"); setVoice("Female"); setGeneratedScript(""); setFormError(""); setModalOpen(true); }}><span className="nav-icon">＋</span> New project</button>
+          <a className="nav-link" href="#story-studio-section"><span className="nav-icon">✦</span> AI Story Studio</a>
         </nav>
         <div className="sidebar-bottom">
           <div className="help-card">
@@ -1168,6 +1170,7 @@ export default function HomePage() {
               </div>
             )}
           </section>
+          <StoryStudio />
           <footer className="app-footer"><span>Movie Recap Studio <b>·</b> Foundation 0.2</span><span>Built for original, licensed or otherwise authorized source media.</span></footer>
         </div>
       </section>
