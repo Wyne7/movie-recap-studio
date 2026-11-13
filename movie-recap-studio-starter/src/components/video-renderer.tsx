@@ -181,13 +181,13 @@ export function VideoRenderer({
             .sort((a, b) => a.narrationStartSeconds - b.narrationStartSeconds)
             .slice(0, 40);
           if (!validSegments.length) throw new Error("The AI scene plan has no usable timestamps within this narration's duration. Generate a new scene plan.");
-          args.push("-f", "lavfi", "-i", "color=c=black:s=" + width + "x" + height + ":r=30:d=" + duration.toFixed(3));
+          args.push("-stream_loop", "-1", "-t", duration.toFixed(3), "-i", "source-video.mp4");
           for (const segment of validSegments) {
             const sourceLength = segment.sourceEndSeconds - segment.sourceStartSeconds;
             args.push("-ss", segment.sourceStartSeconds.toFixed(3), "-t", sourceLength.toFixed(3), "-i", "source-video.mp4");
           }
           audioInputIndex = 1 + validSegments.length;
-          const filters = ["[0:v]format=yuv420p[base0]"];
+          const filters = ["[0:v]scale=" + width + ":" + height + ":force_original_aspect_ratio=increase,crop=" + width + ":" + height + ",setsar=1,fps=30,format=yuv420p[base0]"];
           let previous = "base0";
           validSegments.forEach((segment, index) => {
             const inputIndex = index + 1;
