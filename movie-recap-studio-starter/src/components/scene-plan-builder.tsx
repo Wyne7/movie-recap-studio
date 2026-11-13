@@ -119,7 +119,7 @@ export function ScenePlanBuilder({ videoUrl, script, language, onPlanGenerated }
             </article>
           ))}
           <p className="modal-note" style={{ margin: 0 }}>
-            The plan is ready for the MP4 renderer. In the renderer, paste a direct HTTPS media-file URL that you are authorized to use and that permits browser CORS access. AI narration timing is approximate; uncovered narration intervals may show a black background.
+            The plan is ready for the MP4 renderer. In the renderer, paste a direct HTTPS media-file URL that you are authorized to use and that permits browser CORS access. AI narration timing is approximate; uncovered narration intervals show continuous source footage behind the selected scenes.
           </p>
         </div>
       )}
