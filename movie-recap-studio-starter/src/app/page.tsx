@@ -6,6 +6,7 @@ import type { User } from "@supabase/supabase-js";
 import type { HeadTTS as HeadTTSClient } from "@met4citizen/headtts";
 import { AuthPanel } from "@/components/auth-panel";
 import { VideoRenderer } from "@/components/video-renderer";
+import { ScenePlanBuilder } from "@/components/scene-plan-builder";
 import { getSupabaseBrowserClient, isSupabaseConfigured } from "@/lib/supabase/client";
 
 type ProjectStatus = "Draft" | "Analyzing" | "Ready to edit" | "Rendering" | "Completed";
@@ -1282,6 +1283,13 @@ export default function HomePage() {
                 subtitleUrl={selectedProject.language === "English" ? englishSrtUrl : undefined}
                 projectTitle={selectedProject.title}
                 expectedDuration={selectedProject.duration}
+              />
+            )}
+            {selectedProject && generatedScript && (
+              <ScenePlanBuilder
+                videoUrl={selectedProject.sourceUrl}
+                script={generatedScript}
+                language={selectedProject.language}
               />
             )}
             {formError && <p className="form-error" role="alert">{formError}</p>}
