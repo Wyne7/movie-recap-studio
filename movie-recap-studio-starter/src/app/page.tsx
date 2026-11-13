@@ -227,6 +227,7 @@ export default function HomePage() {
   const [englishAudioUrl, setEnglishAudioUrl] = useState("");
   const [englishSrtUrl, setEnglishSrtUrl] = useState("");
   const [englishProgress, setEnglishProgress] = useState("");
+  const [englishProgressPercent, setEnglishProgressPercent] = useState<number | null>(null);
   const headTtsRef = useRef<HeadTTSClient | null>(null);
 
   useEffect(() => {
@@ -775,6 +776,7 @@ export default function HomePage() {
     setIsGeneratingEnglishAudio(true);
     setFormError("");
     setEnglishProgress("Loading the free Kokoro voice model. The first load may take a few minutes...");
+    setEnglishProgressPercent(null);
     setNotice("");
 
     try {
@@ -804,9 +806,15 @@ export default function HomePage() {
         });
         await engine.connect(null, (event) => {
           if (event.total > 0) {
-            setEnglishProgress(`Downloading voice model: ${Math.round((event.loaded / event.total) * 100)}%`);
+            const downloadPercent = Math.max(0, Math.min(100, Math.round((event.loaded / event.total) * 100)));
+            setEnglishProgress(`Downloading voice model: ${downloadPercent}%`);
+            // Reserve the first half of the bar for model downloads; audio
+            // synthesis and file assembly fill the remaining half.
+            setEnglishProgressPercent(Math.round(downloadPercent * 0.5));
           } else {
-            setEnglishProgress("Loading voice model...");
+            const stage = (event as ProgressEvent<EventTarget> & { stage?: string }).stage;
+            setEnglishProgress(stage === "worker-started" ? "Voice worker started. Loading model runtime..." : "Loading voice model...");
+            setEnglishProgressPercent(null);
           }
         });
         headTtsRef.current = engine;
@@ -815,6 +823,7 @@ export default function HomePage() {
       const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent) ||
         (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
       setEnglishProgress("Voice model loaded. Initializing the audio engine...");
+      setEnglishProgressPercent(52);
       await engine.setup({
         voice: voice === "Female" ? "af_bella" : "am_fenrir",
         language: "en-us",
@@ -824,12 +833,14 @@ export default function HomePage() {
 
       // Smaller sequential requests keep peak work per inference lower on phones
       // and provide visible progress instead of appearing frozen at 100%.
+      setEnglishProgressPercent(55);
       const chunks = splitSpeechText(script, isIOS ? 260 : 450);
       let messages: Awaited<ReturnType<HeadTTSClient["synthesize"]>> = [];
       for (let index = 0; index < chunks.length; index += 1) {
         setEnglishProgress(`Generating audio part ${index + 1} of ${chunks.length}...`);
         const partMessages = await engine.synthesize({ input: chunks[index] });
         messages = messages.concat(partMessages);
+        setEnglishProgressPercent(55 + Math.round(((index + 1) / chunks.length) * 40));
       }
       const audioMessages = messages.filter((message) =>
         message.type === "audio" && message.data?.audio instanceof AudioBuffer
@@ -868,17 +879,21 @@ export default function HomePage() {
         throw new Error("Audio was generated, but word timing data was missing. Please try again.");
       }
 
+      setEnglishProgress("Preparing WAV audio and timed subtitles...");
+      setEnglishProgressPercent(98);
       const wavBlob = audioBuffersToWav(buffers);
       const srtBlob = new Blob([timedWordsToSrt(timedWords)], { type: "text/plain;charset=utf-8" });
       if (englishAudioUrl) URL.revokeObjectURL(englishAudioUrl);
       if (englishSrtUrl) URL.revokeObjectURL(englishSrtUrl);
       setEnglishAudioUrl(URL.createObjectURL(wavBlob));
       setEnglishSrtUrl(URL.createObjectURL(srtBlob));
-      setEnglishProgress("");
+      setEnglishProgress("Voiceover and subtitles are ready.");
+      setEnglishProgressPercent(100);
       setNotice("English WAV voiceover and audio-timed SRT subtitles are ready to preview and download.");
     } catch (error) {
       headTtsRef.current = null;
       setEnglishProgress("");
+      setEnglishProgressPercent(null);
       setFormError(error instanceof Error ? error.message : "Could not generate English voiceover and subtitles.");
     } finally {
       setIsGeneratingEnglishAudio(false);
@@ -1015,6 +1030,12 @@ export default function HomePage() {
                 {isGeneratingVoiceover
                   ? "AI is generating your voiceover. Keep this window open; do not submit again."
                   : <>{scriptProgress || "Gemini is processing your video..."} Elapsed: {Math.floor(scriptElapsedSeconds / 60)}m {scriptElapsedSeconds % 60}s. Keep this window open; do not submit again.</>}
+                {!isGeneratingVoiceover && (
+                  <progress
+                    aria-label="Recap script generation in progress"
+                    style={{ display: "block", width: "100%", height: 9, marginTop: 8 }}
+                  />
+                )}
               </div>
             )}
             {selectedProject && !generatedScript && (
@@ -1057,7 +1078,21 @@ export default function HomePage() {
                 <button type="button" className="secondary-button" onClick={generateEnglishAudioAndSubtitles} disabled={isGenerating || isGeneratingVoiceover || isGeneratingEnglishAudio}>
                   {isGeneratingEnglishAudio ? "Generating English voice + subtitles..." : "Generate English WAV + SRT →"}
                 </button>
-                {isGeneratingEnglishAudio && <p className="modal-note" role="status">{englishProgress || "Preparing voice model..."}</p>}
+                {isGeneratingEnglishAudio && (
+                  <div style={{ display: "grid", gap: 7 }} role="status" aria-live="polite">
+                    <p className="modal-note" style={{ margin: 0 }}>{englishProgress || "Preparing voice model..."}</p>
+                    <progress
+                      max={100}
+                      value={englishProgressPercent === null ? undefined : englishProgressPercent}
+                      aria-label="English voice generation progress"
+                      aria-valuetext={englishProgressPercent === null ? englishProgress : `${englishProgressPercent}%`}
+                      style={{ width: "100%", height: 10, accentColor: "#7057d9" }}
+                    />
+                    {englishProgressPercent !== null && (
+                      <span style={{ fontSize: 11, color: "#747484", textAlign: "right" }}>{englishProgressPercent}%</span>
+                    )}
+                  </div>
+                )}
                 {englishAudioUrl && (
                   <div style={{ display: "grid", gap: 9 }}>
                     <audio controls preload="metadata" src={englishAudioUrl} style={{ width: "100%" }}>Your browser does not support audio playback.</audio>
