@@ -20,7 +20,7 @@ export type SceneEditPlan = {
 };
 
 type Props = {
-  onPlanGenerated?: (plan: SceneEditPlan) => void;
+  onPlanGenerated?: (plan: SceneEditPlan | null) => void;
   videoUrl: string;
   script: string;
   language: "Myanmar" | "English";
@@ -46,6 +46,7 @@ export function ScenePlanBuilder({ videoUrl, script, language, onPlanGenerated }
     setBusy(true);
     setError("");
     setScenes([]);
+    onPlanGenerated?.(null);
     try {
       const supabase = getSupabaseBrowserClient();
       if (!supabase) throw new Error("Supabase sign-in is required to generate a scene plan.");
