@@ -76,7 +76,7 @@ export async function POST(request: NextRequest) {
     const sourceEnd = Number(segment.sourceEndSeconds);
     const narrationText = String(segment.narrationText ?? "").trim().slice(0, 1200);
     const sceneReason = String(segment.sceneReason ?? "").trim().slice(0, 300);
-    const style = ["cinematic", "fast_paced", "documentary"].includes(body.style) ? body.style : "cinematic";
+    const style = ["cinematic", "fast_paced", "documentary", "storybook", "anime-inspired", "3d-animation"].includes(body.style) ? body.style : "cinematic";
     const aspectRatio = body.aspectRatio === "9:16" ? "9:16" : "16:9";
 
     if (!isStoryVisual && !isValidYouTubeUrl(videoUrl)) {
@@ -97,7 +97,7 @@ export async function POST(request: NextRequest) {
           sourceStart.toFixed(1) + " to " + sourceEnd.toFixed(1) + " seconds.",
       "What should be depicted: " + sceneReason,
       "Narration this image accompanies: " + narrationText,
-      "Editing style: " + style + ".",
+      "Visual art direction: " + style + ".",
       "Make a coherent, visually rich, story-relevant image with strong composition and no text, captions, logos, watermarks, borders, or UI.",
       "Create a new illustrative interpretation. Do not reproduce an exact video frame, poster, trademark, or distinctive copyrighted character design.",
       "The image is one still in a larger sequence, so avoid title-card layouts.",
