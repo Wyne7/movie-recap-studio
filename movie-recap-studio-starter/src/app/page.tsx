@@ -1288,6 +1288,7 @@ export default function HomePage() {
                 subtitleUrl={selectedProject.language === "English" ? englishSrtUrl : undefined}
                 projectTitle={selectedProject.title}
                 expectedDuration={selectedProject.duration}
+                sourceVideoUrl={selectedProject.sourceUrl}
                 scenePlan={sceneEditPlan}
               />
             )}
