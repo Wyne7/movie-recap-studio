@@ -32,6 +32,7 @@ export function VideoRenderer({
   expectedDuration,
 }: VideoRendererProps) {
   const ffmpegRef = useRef<FFmpegInstance | null>(null);
+  const ffmpegLoadedRef = useRef(false);
   const outputUrlRef = useRef("");
   const [videoFile, setVideoFile] = useState<File | null>(null);
   const [imageFiles, setImageFiles] = useState<File[]>([]);
@@ -60,6 +61,7 @@ export function VideoRenderer({
     if (outputUrlRef.current) URL.revokeObjectURL(outputUrlRef.current);
     ffmpegRef.current?.terminate();
     ffmpegRef.current = null;
+    ffmpegLoadedRef.current = false;
   }, []);
 
   function clearOutput() {
@@ -111,19 +113,19 @@ export function VideoRenderer({
         ffmpegRef.current = ffmpeg;
       }
 
-      if (!ffmpeg.loaded) {
+      if (!ffmpegLoadedRef.current) {
         setStatus("Downloading the free FFmpeg engine (about 31 MB, first use only)…");
         await ffmpeg.load({
           coreURL: await toBlobURL(CORE_BASE_URL + "/ffmpeg-core.js", "text/javascript"),
           wasmURL: await toBlobURL(CORE_BASE_URL + "/ffmpeg-core.wasm", "application/wasm"),
         });
+        ffmpegLoadedRef.current = true;
       }
 
       setStatus("Loading narration and visual files into your browser…");
       await ffmpeg.writeFile("narration.wav", await fetchFile(audioUrl));
       const duration = Math.max(1, Math.min(audioDuration, 600));
       const args: string[] = [];
-      let videoInputIndex = 0;
       let audioInputIndex = 0;
       let subtitleInputIndex = -1;
       let videoMap: string;
@@ -133,7 +135,6 @@ export function VideoRenderer({
         const safeExtension = ["mp4", "mov", "webm", "m4v"].includes(extension) ? extension : "mp4";
         await ffmpeg.writeFile("source-video." + safeExtension, await fetchFile(videoFile));
         args.push("-stream_loop", "-1", "-i", "source-video." + safeExtension);
-        videoInputIndex = 0;
         audioInputIndex = 1;
         videoMap = "0:v:0";
       } else {
@@ -156,7 +157,6 @@ export function VideoRenderer({
         }
         filters.push(concatInputs.join("") + "concat=n=" + imageCount + ":v=1:a=0[vout]");
         args.push("-filter_complex", filters.join(";"));
-        videoInputIndex = 0;
         audioInputIndex = imageCount;
         videoMap = "[vout]";
       }
