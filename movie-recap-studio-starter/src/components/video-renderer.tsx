@@ -35,6 +35,7 @@ export function VideoRenderer({
   const ffmpegLoadedRef = useRef(false);
   const outputUrlRef = useRef("");
   const [videoFile, setVideoFile] = useState<File | null>(null);
+  const [aspectRatio, setAspectRatio] = useState<"16:9" | "9:16">("16:9");
   const [imageFiles, setImageFiles] = useState<File[]>([]);
   const [audioDuration, setAudioDuration] = useState(0);
   const [isRendering, setIsRendering] = useState(false);
@@ -99,6 +100,8 @@ export function VideoRenderer({
     setError("");
     setStatus("Preparing browser video renderer…");
     clearOutput();
+    const width = aspectRatio === "16:9" ? 1280 : 720;
+    const height = aspectRatio === "16:9" ? 720 : 1280;
 
     try {
       const [{ FFmpeg }, { fetchFile, toBlobURL }] = await Promise.all([
@@ -173,7 +176,7 @@ export function VideoRenderer({
       if (visualMode === "original_clips") {
         args.push(
           "-vf",
-          "scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30,format=yuv420p"
+          "scale=" + width + ":" + height + ":force_original_aspect_ratio=increase,crop=" + width + ":" + height + ",setsar=1,fps=30,format=yuv420p"
         );
       }
       args.push(
@@ -251,7 +254,7 @@ export function VideoRenderer({
             disabled={isRendering}
           />
           <small style={{ display: "block", color: "#747484", fontWeight: 400, marginTop: 4 }}>
-            Upload up to 12 AI-generated images. They will be arranged as a 16:9 slideshow. This version renders images you provide; automatic AI image generation is a separate future feature.
+            Upload up to 12 AI-generated images. They will be arranged as a slideshow in your selected aspect ratio. This version renders images you provide; automatic AI image generation is a separate future feature.
           </small>
         </label>
       )}
