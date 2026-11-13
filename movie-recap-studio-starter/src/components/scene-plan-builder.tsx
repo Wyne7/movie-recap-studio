@@ -58,7 +58,7 @@ function groupSubtitleCues(cues: ReturnType<typeof parseSrtCues>, audioDuration:
     if (cue.startSeconds >= audioDuration || boundedEnd <= cue.startSeconds) continue;
     if (!current) {
       current = { startSeconds: cue.startSeconds, endSeconds: boundedEnd, text: cue.text };
-    } else if (cue.startSeconds - current.startSeconds >= targetSeconds && groups.length < 39) {
+    } else if (cue.startSeconds - current.startSeconds >= targetSeconds && cue.startSeconds >= current.endSeconds && groups.length < 39) {
       groups.push(current);
       current = { startSeconds: cue.startSeconds, endSeconds: boundedEnd, text: cue.text };
     } else {
