@@ -239,6 +239,8 @@ export default function HomePage() {
   const [existingEnglishWav, setExistingEnglishWav] = useState<File | null>(null);
   const [existingEnglishSrt, setExistingEnglishSrt] = useState<File | null>(null);
   const [englishProgress, setEnglishProgress] = useState("");
+  const [isLoadingEnglishAssets, setIsLoadingEnglishAssets] = useState(false);
+  const englishLoadRequestRef = useRef(0);
   const headTtsRef = useRef<HeadTTSClient | null>(null);
 
   useEffect(() => {
@@ -681,6 +683,9 @@ export default function HomePage() {
   }
 
   function openProject(project: RecapProject) {
+    const loadRequestId = ++englishLoadRequestRef.current;
+    if (englishAudioUrl) URL.revokeObjectURL(englishAudioUrl);
+    if (englishSrtUrl) URL.revokeObjectURL(englishSrtUrl);
     setSelectedProject(project);
     setTitle(project.title);
     setSourceUrl(project.sourceUrl);
@@ -692,7 +697,12 @@ export default function HomePage() {
     setVoiceoverUrl("");
     setEnglishAudioUrl("");
     setEnglishSrtUrl("");
+    setExistingEnglishWav(null);
+    setExistingEnglishSrt(null);
     setFormError("");
+    setEnglishProgress("");
+    setIsLoadingEnglishAssets(Boolean(project.englishAudioPath || project.englishSrtPath));
+
     if (project.voiceoverPath) {
       void (async () => {
         const supabase = getSupabaseBrowserClient();
@@ -706,39 +716,48 @@ export default function HomePage() {
         if (response.ok && result?.success && typeof result.signedUrl === "string") setVoiceoverUrl(result.signedUrl);
       })();
     }
-    if (project.englishAudioPath || project.englishSrtPath) {
+
+    if (project.englishAudioPath && project.englishSrtPath) {
       void (async () => {
         const supabase = getSupabaseBrowserClient();
-        if (!supabase) return;
+        if (!supabase) {
+          if (englishLoadRequestRef.current === loadRequestId) setIsLoadingEnglishAssets(false);
+          return;
+        }
         try {
           const [audioLink, srtLink] = await Promise.all([
-            project.englishAudioPath
-              ? supabase.storage.from("voiceovers").createSignedUrl(project.englishAudioPath, 60 * 60)
-              : Promise.resolve({ data: null, error: null }),
-            project.englishSrtPath
-              ? supabase.storage.from("voiceovers").createSignedUrl(project.englishSrtPath, 60 * 60)
-              : Promise.resolve({ data: null, error: null }),
+            supabase.storage.from("voiceovers").createSignedUrl(project.englishAudioPath!, 60 * 60),
+            supabase.storage.from("voiceovers").createSignedUrl(project.englishSrtPath!, 60 * 60),
           ]);
           if (audioLink.error) throw audioLink.error;
           if (srtLink.error) throw srtLink.error;
-          if (audioLink.data?.signedUrl) {
-            const response = await fetch(audioLink.data.signedUrl);
-            if (!response.ok) throw new Error("Could not download the saved WAV file.");
-            setEnglishAudioUrl(URL.createObjectURL(await response.blob()));
+          if (!audioLink.data?.signedUrl || !srtLink.data?.signedUrl) {
+            throw new Error("The saved English WAV or SRT file is missing from storage.");
           }
-          if (srtLink.data?.signedUrl) {
-            const response = await fetch(srtLink.data.signedUrl);
-            if (!response.ok) throw new Error("Could not download the saved SRT file.");
-            setEnglishSrtUrl(URL.createObjectURL(await response.blob()));
-          }
+          const [audioResponse, srtResponse] = await Promise.all([
+            fetch(audioLink.data.signedUrl),
+            fetch(srtLink.data.signedUrl),
+          ]);
+          if (!audioResponse.ok) throw new Error("Could not download the saved WAV file.");
+          if (!srtResponse.ok) throw new Error("Could not download the saved SRT file.");
+          const [audioBlob, srtBlob] = await Promise.all([audioResponse.blob(), srtResponse.blob()]);
+          if (englishLoadRequestRef.current !== loadRequestId) return;
+          setEnglishAudioUrl(URL.createObjectURL(audioBlob));
+          setEnglishSrtUrl(URL.createObjectURL(srtBlob));
+          setNotice("Saved English WAV + SRT loaded. No voice generation was run.");
         } catch (error) {
-          setFormError(error instanceof Error ? error.message : "Could not load saved English files.");
+          if (englishLoadRequestRef.current === loadRequestId) {
+            setFormError(error instanceof Error ? error.message : "Could not load saved English files.");
+          }
+        } finally {
+          if (englishLoadRequestRef.current === loadRequestId) setIsLoadingEnglishAssets(false);
         }
       })();
+    } else {
+      setIsLoadingEnglishAssets(false);
     }
     setModalOpen(true);
   }
-
 
   async function generateVoiceover() {
     if (!selectedProject || !generatedScript.trim() || isGeneratingVoiceover) return;
@@ -1202,9 +1221,19 @@ export default function HomePage() {
                   <h3 style={{ fontSize: 12, margin: "0 0 5px" }}>English AI Voiceover + Timed Subtitles</h3>
                   <p style={{ fontSize: 11, color: "#747484", margin: 0 }}>Free, open-source Kokoro voice generation runs in this browser. Choose Male or Female in the project settings. The first use downloads the voice model; keep this page open until generation finishes.</p>
                 </div>
-                <button type="button" className="secondary-button" onClick={generateEnglishAudioAndSubtitles} disabled={!generatedScript || isGenerating || isGeneratingVoiceover || isGeneratingEnglishAudio}>
-                  {isGeneratingEnglishAudio ? "Generating English voice + subtitles..." : selectedProject.englishAudioPath && selectedProject.englishSrtPath ? "Regenerate English WAV + SRT" : "Generate English WAV + SRT →"}
-                </button>
+                {isLoadingEnglishAssets && <p className="modal-note" role="status">Loading your saved English WAV + SRT files… Please wait. No voice generation is running.</p>}
+                {selectedProject.englishAudioPath && selectedProject.englishSrtPath ? (
+                  <>
+                    <p className="modal-note" style={{ margin: 0 }}>{englishAudioUrl && englishSrtUrl ? "Your saved WAV + SRT are loaded and ready to use." : "This project already has saved WAV + SRT files. They load automatically when the project opens."}</p>
+                    <button type="button" className="secondary-button" onClick={generateEnglishAudioAndSubtitles} disabled={!generatedScript || isGenerating || isGeneratingVoiceover || isGeneratingEnglishAudio || isLoadingEnglishAssets}>
+                      {isGeneratingEnglishAudio ? "Generating new English voice + subtitles..." : "Regenerate English WAV + SRT"}
+                    </button>
+                  </>
+                ) : (
+                  <button type="button" className="secondary-button" onClick={generateEnglishAudioAndSubtitles} disabled={!generatedScript || isGenerating || isGeneratingVoiceover || isGeneratingEnglishAudio || isLoadingEnglishAssets}>
+                    {isGeneratingEnglishAudio ? "Generating English voice + subtitles..." : "Generate English WAV + SRT →"}
+                  </button>
+                )}
                 {isGeneratingEnglishAudio && <p className="modal-note" role="status">{englishProgress || "Preparing voice model..."}</p>}
                 {(!selectedProject.englishAudioPath || !selectedProject.englishSrtPath) && (
                   <div style={{ display: "grid", gap: 7 }}>
