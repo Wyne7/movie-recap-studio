@@ -38,6 +38,7 @@ export function VideoRenderer({
   const outputUrlRef = useRef("");
   const [videoFile, setVideoFile] = useState<File | null>(null);
   const [authorizedMediaUrl, setAuthorizedMediaUrl] = useState("");
+  const [authorizedMediaUrl, setAuthorizedMediaUrl] = useState("");
   const [imageFiles, setImageFiles] = useState<File[]>([]);
   const [audioDuration, setAudioDuration] = useState(0);
   const [isRendering, setIsRendering] = useState(false);
@@ -76,8 +77,9 @@ export function VideoRenderer({
 
   async function renderVideo() {
     if (!audioUrl || !audioDuration || isRendering) return;
-    if (visualMode === "original_clips" && !videoFile) {
-      setError("Choose an authorized video file before rendering.");
+    const useScenePlan = visualMode === "original_clips" && Boolean(scenePlan?.segments.length);
+    if (visualMode === "original_clips" && !videoFile && !(useScenePlan && authorizedMediaUrl.trim())) {
+      setError(useScenePlan ? "Paste a CORS-enabled authorized direct video URL or choose an authorized video file." : "Choose an authorized video file before rendering.");
       return;
     }
     if (visualMode === "ai_visuals" && imageFiles.length === 0) {
@@ -129,6 +131,8 @@ export function VideoRenderer({
       setStatus("Loading narration and visual files into your browser…");
       await ffmpeg.writeFile("narration.wav", await fetchFile(audioUrl));
       const duration = Math.max(1, Math.min(audioDuration, 600));
+      const width = scenePlan?.aspectRatio === "9:16" ? 720 : 1280;
+      const height = scenePlan?.aspectRatio === "9:16" ? 1280 : 720;
       const args: string[] = ["-y"];
       let audioInputIndex = 0;
       let subtitleInputIndex = -1;
@@ -205,7 +209,7 @@ export function VideoRenderer({
           videoMap = "[" + previous + "]";
         } else {
           args.push("-stream_loop", "-1", "-i", "source-video.mp4");
-          audioInputIndex = 2;
+          audioInputIndex = 1;
           videoMap = "1:v:0";
         }
       } else {
@@ -221,8 +225,8 @@ export function VideoRenderer({
           await ffmpeg.writeFile(inputName, await fetchFile(file));
           args.push("-loop", "1", "-framerate", "30", "-t", secondsPerImage.toFixed(3), "-i", inputName);
           filters.push(
-            "[" + index + ":v]scale=1280:720:force_original_aspect_ratio=decrease," +
-            "pad=1280:720:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30,format=yuv420p[v" + index + "]"
+            "[" + index + ":v]scale=" + width + ":" + height + ":force_original_aspect_ratio=decrease," +
+            "pad=" + width + ":" + height + ":(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30,format=yuv420p[v" + index + "]"
           );
           concatInputs.push("[v" + index + "]");
         }
@@ -240,10 +244,10 @@ export function VideoRenderer({
         args.push("-i", "captions.srt");
       }
 
-      if (visualMode === "original_clips") {
+      if (visualMode === "original_clips" && !useScenePlan) {
         args.push(
           "-vf",
-          "scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30,format=yuv420p"
+          "scale=" + width + ":" + height + ":force_original_aspect_ratio=decrease,pad=" + width + ":" + height + ":(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30,format=yuv420p"
         );
       }
       args.push(
@@ -325,6 +329,22 @@ export function VideoRenderer({
           </small>
         </label>
       )}
+
+      {visualMode === "original_clips" && scenePlan?.segments.length ? (
+        <label className="field-label">
+          Authorized direct video URL (optional)
+          <input
+            type="url"
+            value={authorizedMediaUrl}
+            placeholder="https://media.example.com/authorized-video.mp4"
+            onChange={(event) => { setAuthorizedMediaUrl(event.target.value); clearOutput(); }}
+            disabled={isRendering}
+          />
+          <small style={{ display: "block", color: "#747484", fontWeight: 400, marginTop: 4 }}>
+            Use a direct HTTPS media-file link you are authorized to process. The host must allow browser CORS access; YouTube watch/share links are not direct media files. If this link cannot be fetched, use the authorized video file picker above.
+          </small>
+        </label>
+      ) : null}
 
       <div className="modal-note">
         Narration length: <strong>{durationLabel}</strong> · Project setting: <strong>{expectedDuration}</strong>{scenePlan ? " · AI edit plan: " + scenePlan.segments.length + " scenes · " + scenePlan.aspectRatio : ""}
