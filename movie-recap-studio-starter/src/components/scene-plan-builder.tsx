@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 
-type Scene = {
+export type SceneEditSegment = {
   index: number;
   sourceStartSeconds: number;
   sourceEndSeconds: number;
@@ -13,7 +13,14 @@ type Scene = {
   sceneReason: string;
 };
 
+export type SceneEditPlan = {
+  style: string;
+  aspectRatio: "16:9" | "9:16";
+  segments: SceneEditSegment[];
+};
+
 type Props = {
+  onPlanGenerated?: (plan: SceneEditPlan) => void;
   videoUrl: string;
   script: string;
   language: "Myanmar" | "English";
@@ -26,10 +33,10 @@ function timestamp(seconds: number) {
     String(whole % 60).padStart(2, "0");
 }
 
-export function ScenePlanBuilder({ videoUrl, script, language }: Props) {
+export function ScenePlanBuilder({ videoUrl, script, language, onPlanGenerated }: Props) {
   const [style, setStyle] = useState("cinematic");
   const [aspectRatio, setAspectRatio] = useState<"16:9" | "9:16">("16:9");
-  const [scenes, setScenes] = useState<Scene[]>([]);
+  const [scenes, setScenes] = useState<SceneEditSegment[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [model, setModel] = useState("");
@@ -59,6 +66,7 @@ export function ScenePlanBuilder({ videoUrl, script, language }: Props) {
         throw new Error(data?.error || "Could not generate the scene plan.");
       }
       setScenes(data.segments);
+      onPlanGenerated?.({ style: data.style || style, aspectRatio: data.aspectRatio || aspectRatio, segments: data.segments });
       setModel(data.model || "");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not generate the scene plan.");
