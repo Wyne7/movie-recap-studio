@@ -363,7 +363,7 @@ export function VideoRenderer({
         type="button"
         className="primary-button"
         onClick={renderVideo}
-        disabled={isRendering || !audioDuration || (visualMode === "original_clips" ? (!videoFile && !(scenePlan?.segments.length && authorizedMediaUrl.trim())) : imageFiles.length === 0)}
+        disabled={isRendering || !audioDuration || (visualMode === "original_clips" ? (!videoFile && !authorizedMediaUrl.trim()) : imageFiles.length === 0)}
       >
         {isRendering ? "Rendering MP4…" : "Render MP4 video →"}
       </button>
