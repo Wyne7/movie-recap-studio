@@ -125,7 +125,7 @@ export function VideoRenderer({
       setStatus("Loading narration and visual files into your browser…");
       await ffmpeg.writeFile("narration.wav", await fetchFile(audioUrl));
       const duration = Math.max(1, Math.min(audioDuration, 600));
-      const args: string[] = [];
+      const args: string[] = ["-y"];
       let audioInputIndex = 0;
       let subtitleInputIndex = -1;
       let videoMap: string;
@@ -197,7 +197,8 @@ export function VideoRenderer({
       setStatus("Preparing your MP4 download…");
       const data = await ffmpeg.readFile("recap-output.mp4");
       if (typeof data === "string") throw new Error("The renderer returned an invalid MP4 file.");
-      const blob = new Blob([new Uint8Array(data)], { type: "video/mp4" });
+      const outputBytes = new Uint8Array(data);
+      const blob = new Blob([outputBytes.buffer as ArrayBuffer], { type: "video/mp4" });
       if (!blob.size) throw new Error("The rendered MP4 is empty. Please try another source file.");
       const url = URL.createObjectURL(blob);
       outputUrlRef.current = url;
