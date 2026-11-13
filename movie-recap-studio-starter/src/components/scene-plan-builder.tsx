@@ -17,6 +17,7 @@ export type SceneEditPlan = {
   style: string;
   aspectRatio: "16:9" | "9:16";
   segments: SceneEditSegment[];
+  timingSource?: "srt" | "estimated";
 };
 
 type Props = {
@@ -24,7 +25,73 @@ type Props = {
   videoUrl: string;
   script: string;
   language: "Myanmar" | "English";
+  audioUrl: string;
+  subtitleUrl?: string;
 };
+
+function parseSrtCues(contents: string) {
+  const toSeconds = (value: string) => {
+    const match = value.trim().match(/^(\d{2}):(\d{2}):(\d{2})[,.](\d{3})$/);
+    if (!match) return NaN;
+    return Number(match[1]) * 3600 + Number(match[2]) * 60 + Number(match[3]) + Number(match[4]) / 1000;
+  };
+  return contents.replace(/^\uFEFF/, "").split(/\r?\n\s*\r?\n/).flatMap((block) => {
+    const lines = block.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+    const timingIndex = lines.findIndex((line) => line.includes("-->"));
+    if (timingIndex < 0) return [];
+    const parts = lines[timingIndex].split("-->").map((part) => part.trim().split(/\s+/)[0]);
+    const startSeconds = toSeconds(parts[0] || "");
+    const endSeconds = toSeconds(parts[1] || "");
+    const text = lines.slice(timingIndex + 1).join(" ").trim();
+    return Number.isFinite(startSeconds) && Number.isFinite(endSeconds) && endSeconds > startSeconds && text
+      ? [{ startSeconds, endSeconds, text: text.slice(0, 1200) }]
+      : [];
+  });
+}
+
+function groupSubtitleCues(cues: ReturnType<typeof parseSrtCues>, audioDuration: number) {
+  const targetSeconds = Math.max(8, audioDuration / 40);
+  const groups: Array<{ startSeconds: number; endSeconds: number; text: string }> = [];
+  let current: { startSeconds: number; endSeconds: number; text: string } | null = null;
+  for (const cue of cues) {
+    const boundedEnd = Math.min(audioDuration, cue.endSeconds);
+    if (cue.startSeconds >= audioDuration || boundedEnd <= cue.startSeconds) continue;
+    if (!current) {
+      current = { startSeconds: cue.startSeconds, endSeconds: boundedEnd, text: cue.text };
+    } else if (cue.startSeconds - current.startSeconds >= targetSeconds && groups.length < 39) {
+      groups.push(current);
+      current = { startSeconds: cue.startSeconds, endSeconds: boundedEnd, text: cue.text };
+    } else {
+      current.endSeconds = Math.max(current.endSeconds, boundedEnd);
+      current.text = (current.text + " " + cue.text).slice(-2400);
+    }
+  }
+  if (current) groups.push(current);
+  return groups.slice(0, 40);
+}
+
+async function readAudioDuration(url: string): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const audio = new Audio(url);
+    const cleanup = () => {
+      audio.removeEventListener("loadedmetadata", onLoaded);
+      audio.removeEventListener("error", onError);
+    };
+    const onLoaded = () => {
+      const duration = audio.duration;
+      cleanup();
+      if (Number.isFinite(duration) && duration > 0) resolve(duration);
+      else reject(new Error("Could not read the WAV narration duration."));
+    };
+    const onError = () => {
+      cleanup();
+      reject(new Error("Could not read the WAV narration."));
+    };
+    audio.addEventListener("loadedmetadata", onLoaded);
+    audio.addEventListener("error", onError);
+    audio.load();
+  });
+}
 
 function timestamp(seconds: number) {
   const whole = Math.max(0, Math.floor(seconds));
@@ -33,7 +100,7 @@ function timestamp(seconds: number) {
     String(whole % 60).padStart(2, "0");
 }
 
-export function ScenePlanBuilder({ videoUrl, script, language, onPlanGenerated }: Props) {
+export function ScenePlanBuilder({ videoUrl, script, language, audioUrl, subtitleUrl, onPlanGenerated }: Props) {
   const [style, setStyle] = useState("cinematic");
   const [aspectRatio, setAspectRatio] = useState<"16:9" | "9:16">("16:9");
   const [scenes, setScenes] = useState<SceneEditSegment[]>([]);
@@ -54,20 +121,28 @@ export function ScenePlanBuilder({ videoUrl, script, language, onPlanGenerated }
       if (sessionError || !sessionData.session?.access_token) {
         throw new Error("Your session expired. Please sign in again.");
       }
+      if (!audioUrl || !subtitleUrl) throw new Error("Load the matching narration WAV and SRT before generating a precisely timed scene plan.");
+      const [audioDuration, subtitleResponse] = await Promise.all([
+        readAudioDuration(audioUrl),
+        fetch(subtitleUrl, { cache: "no-store" }),
+      ]);
+      if (!subtitleResponse.ok) throw new Error("Could not read the SRT subtitles. Please reload the saved WAV + SRT files.");
+      const subtitleCues = groupSubtitleCues(parseSrtCues(await subtitleResponse.text()), audioDuration);
+      if (!subtitleCues.length) throw new Error("The SRT file contains no valid timed subtitle cues.");
       const response = await fetch("/api/generate-edit-plan", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: "Bearer " + sessionData.session.access_token,
         },
-        body: JSON.stringify({ videoUrl, script, language, style, aspectRatio }),
+        body: JSON.stringify({ videoUrl, script, language, style, aspectRatio, audioDuration, subtitleCues }),
       });
       const data = await response.json().catch(() => null);
       if (!response.ok || !data?.success) {
         throw new Error(data?.error || "Could not generate the scene plan.");
       }
       setScenes(data.segments);
-      onPlanGenerated?.({ style: data.style || style, aspectRatio: data.aspectRatio || aspectRatio, segments: data.segments });
+      onPlanGenerated?.({ style: data.style || style, aspectRatio: data.aspectRatio || aspectRatio, segments: data.segments, timingSource: data.timingSource || "srt" });
       setModel(data.model || "");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not generate the scene plan.");
@@ -99,8 +174,11 @@ export function ScenePlanBuilder({ videoUrl, script, language, onPlanGenerated }
           </select>
         </label>
       </div>
-      <button type="button" className="secondary-button" onClick={generatePlan} disabled={busy || script.trim().length < 80}>
-        {busy ? "AI is analyzing scenes…" : "Generate AI Scene Edit Plan →"}
+      {!audioUrl || !subtitleUrl ? (
+        <p className="modal-note" role="status">Precise WAV/SRT scene matching currently requires an English narration WAV and its matching SRT file to be loaded first.</p>
+      ) : null}
+      <button type="button" className="secondary-button" onClick={generatePlan} disabled={busy || script.trim().length < 80 || !audioUrl || !subtitleUrl}>
+        {busy ? "AI is analyzing scenes…" : "Generate SRT-Synced Scene Edit Plan →"}
       </button>
       {busy && (
         <div className="modal-note" role="status" aria-live="polite" style={{ display: "grid", gap: 7 }}>
@@ -113,7 +191,7 @@ export function ScenePlanBuilder({ videoUrl, script, language, onPlanGenerated }
       {scenes.length > 0 && (
         <div style={{ display: "grid", gap: 8 }}>
           <p className="modal-note" style={{ margin: 0 }}>
-            {scenes.length} suggested scenes{model ? " · " + model : ""}. Review timestamps before using them in a final edit.
+            {scenes.length} suggested scenes{model ? " · " + model : ""}. Scene timing follows your SRT cues and WAV duration.
           </p>
           {scenes.map((scene) => (
             <article key={scene.index} style={{ border: "1px solid #ececf1", borderRadius: 7, padding: 9, display: "grid", gap: 5 }}>
@@ -141,7 +219,7 @@ export function ScenePlanBuilder({ videoUrl, script, language, onPlanGenerated }
               <li>Your existing narration WAV and SRT are reused automatically when loaded. Watch the progress bars while images are generated and the MP4 is rendered.</li>
               <li>Preview and download the finished MP4 when rendering completes.</li>
             </ol>
-            <span>AI narration timing is approximate. Original Clips still requires media you own or are authorized to reuse. AI Visuals creates new illustrative images from the public YouTube video context; it does not download the source footage.</span>
+            <span>For Original Clips, scene overlays follow the exact SRT time windows on the WAV timeline. AI Visuals remains a still-image slideshow, so it does not yet provide frame-by-frame motion editing. Original Clips requires media you own or are authorized to reuse.</span>
           </div>
         </div>
       )}

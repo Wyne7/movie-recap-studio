@@ -1299,6 +1299,8 @@ export default function HomePage() {
                 videoUrl={selectedProject.sourceUrl}
                 script={generatedScript}
                 language={selectedProject.language}
+                audioUrl={selectedProject.language === "English" ? englishAudioUrl : voiceoverUrl}
+                subtitleUrl={selectedProject.language === "English" ? englishSrtUrl : ""}
                 onPlanGenerated={setSceneEditPlan}
               />
             )}
