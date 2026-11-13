@@ -420,21 +420,23 @@ export function VideoRenderer({
             disabled={isRendering}
           />
           <small style={{ display: "block", color: "#747484", fontWeight: 400, marginTop: 4 }}>
-            After AI Scene Selection, the app can generate up to 12 original scene illustrations from this YouTube link and arrange them into a slideshow. You can also upload your own images instead. Image generation uses your configured Gemini API quota and may incur charges.
+            {scenePlan?.sourceType === "story"
+              ? "The app generates one original illustration for each AI-written story scene, keeping the character guide consistent, then arranges them using each scene's narration duration."
+              : "After AI Scene Selection, the app can generate up to 12 original scene illustrations from this YouTube link and arrange them into a slideshow."} You can also upload your own images instead. Image generation uses your configured Gemini API quota and may incur charges.
           </small>
         </label>
       )}
 
       <div className="modal-note">
         Narration length: <strong>{durationLabel}</strong> · Project setting: <strong>{expectedDuration}</strong>{scenePlan ? " · AI edit plan: " + scenePlan.segments.length + " scenes · " + scenePlan.aspectRatio : ""}
-        {subtitleUrl ? " · Timed SRT subtitles will be embedded as a selectable subtitle track." : " · No subtitle file is attached to this voiceover."}
+        {subtitleUrl ? " · SRT captions will be burned into the picture and embedded as a selectable subtitle track." : " · No subtitle file is attached to this voiceover."}
       </div>
 
       <button
         type="button"
         className="primary-button"
         onClick={renderVideo}
-        disabled={isRendering || !audioDuration || (visualMode === "original_clips" ? (!videoFile && !authorizedMediaUrl.trim()) : (imageFiles.length === 0 && generatedImageFiles.length === 0 && (!scenePlan?.segments.length || !sourceVideoUrl)))}
+        disabled={isRendering || !audioDuration || (visualMode === "original_clips" ? (!videoFile && !authorizedMediaUrl.trim()) : (imageFiles.length === 0 && generatedImageFiles.length === 0 && (!scenePlan?.segments.length || (!sourceVideoUrl && scenePlan?.sourceType !== "story"))))}
       >
         {isRendering ? "Working…" : visualMode === "ai_visuals" && imageFiles.length === 0 && generatedImageFiles.length === 0 ? "Generate AI visuals + Render MP4 →" : "Render MP4 video →"}
       </button>
