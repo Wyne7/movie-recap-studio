@@ -344,6 +344,7 @@ export default function HomePage() {
     setVoiceoverUrl("");
     setFormError("");
     setGeneratedScript("");
+    setSceneEditPlan(null);
 
     const submitter = (event.nativeEvent as SubmitEvent)
       .submitter as HTMLButtonElement | null;
@@ -569,6 +570,7 @@ export default function HomePage() {
         }
       }
 
+      setSceneEditPlan(null);
       setGeneratedScript(script);
       const scriptedProject = { ...savedProject, script, status: "Ready to edit" as ProjectStatus };
       setSelectedProject(scriptedProject);
@@ -673,6 +675,7 @@ export default function HomePage() {
         current.map((item) => item.id === project.id ? completedProject : item)
       );
       setSelectedProject(completedProject);
+      setSceneEditPlan(null);
       setGeneratedScript(script);
       setNotice("Recap script generated and saved to this project.");
       window.setTimeout(() => setNotice(""), 7000);
@@ -690,6 +693,7 @@ export default function HomePage() {
     if (englishAudioUrl) URL.revokeObjectURL(englishAudioUrl);
     if (englishSrtUrl) URL.revokeObjectURL(englishSrtUrl);
     setSelectedProject(project);
+    setSceneEditPlan(null);
     setTitle(project.title);
     setSourceUrl(project.sourceUrl);
     setLanguage(project.language);
