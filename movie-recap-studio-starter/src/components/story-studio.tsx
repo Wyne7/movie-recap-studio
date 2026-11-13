@@ -401,7 +401,7 @@ export function StoryStudio() {
                 audioUrl={audioUrl}
                 subtitleUrl={subtitleUrl}
                 projectTitle={story.title}
-                expectedDuration="3 min"
+                expectedDuration={durationSeconds === 60 ? "1 min" : durationSeconds === 90 ? "1.5 min" : durationSeconds === 120 ? "2 min" : "3 min"}
                 sourceVideoUrl=""
                 scenePlan={scenePlan}
               />
