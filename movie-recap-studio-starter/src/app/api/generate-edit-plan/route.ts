@@ -10,7 +10,8 @@ const TIMEOUT_MS = 240_000;
 function isValidYouTubeUrl(value: string): boolean {
   try {
     const url = new URL(value);
-    const host = url.hostname.toLowerCase().replace(/^www\\./, "");
+    const hostname = url.hostname.toLowerCase();
+    const host = hostname.startsWith("www.") ? hostname.slice(4) : hostname;
     if (url.protocol !== "https:" && url.protocol !== "http:") return false;
     if (host === "youtu.be") return url.pathname.length > 1;
     if (host === "youtube.com" || host === "m.youtube.com") {
@@ -45,15 +46,25 @@ function parsePlan(raw: string) {
   const segments = parsed.segments.map((item: any, index: number) => {
     const start = Number(item?.sourceStartSeconds);
     const end = Number(item?.sourceEndSeconds);
+    const narrationStart = Number(item?.narrationStartSeconds);
+    const narrationEnd = Number(item?.narrationEndSeconds);
     const narration = String(item?.narrationText ?? "").trim();
     const reason = String(item?.sceneReason ?? "").trim();
-    if (!Number.isFinite(start) || !Number.isFinite(end) || start < 0 || end <= start || end - start > 180) {
-      throw new Error("The AI returned invalid scene timestamps. Please regenerate the scene plan.");
+    if (!Number.isFinite(start) || !Number.isFinite(end) || start < 0 || end <= start || end - start < 1 || end - start > 18) {
+      throw new Error("The AI returned invalid source-scene timestamps. Please regenerate the scene plan.");
+    }
+    if (!Number.isFinite(narrationStart) || !Number.isFinite(narrationEnd) || narrationStart < 0 || narrationEnd <= narrationStart || narrationEnd - narrationStart > 180) {
+      throw new Error("The AI returned invalid narration timing. Please regenerate the scene plan.");
+    }
+    if (!narration || !reason) {
+      throw new Error("The AI returned an incomplete scene description. Please regenerate the scene plan.");
     }
     return {
       index: index + 1,
       sourceStartSeconds: Math.round(start * 10) / 10,
       sourceEndSeconds: Math.round(end * 10) / 10,
+      narrationStartSeconds: Math.round(narrationStart * 10) / 10,
+      narrationEndSeconds: Math.round(narrationEnd * 10) / 10,
       narrationText: narration.slice(0, 1200),
       sceneReason: reason.slice(0, 300),
     };
@@ -109,10 +120,11 @@ export async function POST(request: NextRequest) {
       "Avoid repeating the same source moment unless it is genuinely relevant. Prefer scene changes and action that supports the narration.",
       "Editing style: " + style + ". Output aspect ratio: " + aspectRatio + ".",
       "Narration language: " + language + ".",
-      "For each segment, include a short exact excerpt from the supplied narration that this footage should accompany, and a concise visual reason.",
+      "For each segment, include narrationStartSeconds and narrationEndSeconds: approximate positions in the narration audio timeline (seconds from the beginning of the narration) when the supplied narration excerpt is spoken. These must be positive, ordered, and no more than 180 seconds apart.",
+      "Also include a short exact excerpt from the supplied narration that this footage should accompany, and a concise visual reason.",
       "Do not invent source events, dialogue, or timestamps. If the video is inaccessible or the scene cannot be verified, return an error object instead of guessing.",
       "Return ONLY valid JSON, no markdown, in this exact shape:",
-      '{"segments":[{"sourceStartSeconds":12.5,"sourceEndSeconds":20.0,"narrationText":"short excerpt from the script","sceneReason":"what is visible and why it matches"}]}',
+      '{"segments":[{"sourceStartSeconds":12.5,"sourceEndSeconds":20.0,"narrationStartSeconds":0.0,"narrationEndSeconds":7.5,"narrationText":"short excerpt from the script","sceneReason":"what is visible and why it matches"}]}',
       "Narration script:",
       script,
     ].join("\n\n");
