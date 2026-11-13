@@ -1196,13 +1196,13 @@ export default function HomePage() {
                 </pre>
               </section>
             )}
-            {generatedScript && selectedProject && selectedProject.language === "English" && (
+            {selectedProject && selectedProject.language === "English" && (
               <section style={{ border: "1px solid #e7e7ed", borderRadius: 9, padding: 13, display: "grid", gap: 10 }}>
                 <div>
                   <h3 style={{ fontSize: 12, margin: "0 0 5px" }}>English AI Voiceover + Timed Subtitles</h3>
                   <p style={{ fontSize: 11, color: "#747484", margin: 0 }}>Free, open-source Kokoro voice generation runs in this browser. Choose Male or Female in the project settings. The first use downloads the voice model; keep this page open until generation finishes.</p>
                 </div>
-                <button type="button" className="secondary-button" onClick={generateEnglishAudioAndSubtitles} disabled={isGenerating || isGeneratingVoiceover || isGeneratingEnglishAudio}>
+                <button type="button" className="secondary-button" onClick={generateEnglishAudioAndSubtitles} disabled={!generatedScript || isGenerating || isGeneratingVoiceover || isGeneratingEnglishAudio}>
                   {isGeneratingEnglishAudio ? "Generating English voice + subtitles..." : selectedProject.englishAudioPath && selectedProject.englishSrtPath ? "Regenerate English WAV + SRT" : "Generate English WAV + SRT →"}
                 </button>
                 {isGeneratingEnglishAudio && <p className="modal-note" role="status">{englishProgress || "Preparing voice model..."}</p>}
