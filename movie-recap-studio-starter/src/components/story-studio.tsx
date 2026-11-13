@@ -162,7 +162,7 @@ export function StoryStudio() {
     }
   }
 
-  async function generateEnglishVoiceover(currentStory: StoryResult, token: string) {
+  async function generateEnglishVoiceover(currentStory: StoryResult) {
     let engine = engineRef.current;
     if (!engine) {
       setProgress("Loading the free Kokoro English voice model. The first load may take a few minutes…");
@@ -302,7 +302,7 @@ export function StoryStudio() {
     try {
       const { data, error: sessionError } = await supabase.auth.getSession();
       if (sessionError || !data.session?.access_token) throw new Error("Your session expired. Please sign in again.");
-      if (language === "English") await generateEnglishVoiceover(story, data.session.access_token);
+      if (language === "English") await generateEnglishVoiceover(story);
       else await generateMyanmarVoiceover(story, data.session.access_token);
       setProgress("Narration and timed subtitles are ready. Continue to AI visuals and MP4 rendering below.");
     } catch (caught) {
@@ -345,12 +345,21 @@ export function StoryStudio() {
           </select>
         </label>
         <label className="field-label">Visual style
-          <select value={visualStyle} onChange={(event) => setVisualStyle(event.target.value)} disabled={busy || voiceBusy}>
+          <select value={visualStyle} onChange={(event) => {
+              const nextStyle = event.target.value;
+              setVisualStyle(nextStyle);
+              setStory((current) => current ? { ...current, visualStyle: nextStyle } : current);
+              setScenePlan((current) => current ? { ...current, style: nextStyle } : current);
+            }} disabled={busy || voiceBusy}>
             <option value="cinematic">Cinematic</option><option value="storybook">Storybook illustration</option><option value="anime-inspired">Anime-inspired</option><option value="3d-animation">3D animation</option>
           </select>
         </label>
         <label className="field-label">Video ratio
-          <select value={aspectRatio} onChange={(event) => setAspectRatio(event.target.value as "16:9" | "9:16")} disabled={busy || voiceBusy}>
+          <select value={aspectRatio} onChange={(event) => {
+              const nextRatio = event.target.value as "16:9" | "9:16";
+              setAspectRatio(nextRatio);
+              setScenePlan((current) => current ? { ...current, aspectRatio: nextRatio } : current);
+            }} disabled={busy || voiceBusy}>
             <option value="16:9">16:9 · YouTube</option><option value="9:16">9:16 · Shorts</option>
           </select>
         </label>
