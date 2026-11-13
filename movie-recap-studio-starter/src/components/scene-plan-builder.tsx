@@ -124,6 +124,13 @@ export function ScenePlanBuilder({ videoUrl, script, language, onPlanGenerated }
               <p style={{ fontSize: 11, color: "#747484", margin: 0, lineHeight: 1.5 }}>{scene.narrationText}</p>
             </article>
           ))}
+          <button
+            type="button"
+            className="primary-button"
+            onClick={() => document.getElementById("video-rendering-section")?.scrollIntoView({ behavior: "smooth", block: "start" })}
+          >
+            Continue to Video Rendering ↓
+          </button>
           <div className="modal-note" style={{ margin: 0, display: "grid", gap: 6 }}>
             <strong>Scene plan generated. What to do next:</strong>
             <ol style={{ margin: "0 0 0 18px", padding: 0, lineHeight: 1.7 }}>
