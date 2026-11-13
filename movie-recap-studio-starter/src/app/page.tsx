@@ -6,6 +6,7 @@ import type { User } from "@supabase/supabase-js";
 import type { HeadTTS as HeadTTSClient } from "@met4citizen/headtts";
 import { AuthPanel } from "@/components/auth-panel";
 import { VideoRenderer } from "@/components/video-renderer";
+import { ScenePlanBuilder, type SceneEditPlan } from "@/components/scene-plan-builder";
 import { getSupabaseBrowserClient, isSupabaseConfigured } from "@/lib/supabase/client";
 
 type ProjectStatus = "Draft" | "Analyzing" | "Ready to edit" | "Rendering" | "Completed";
@@ -231,6 +232,7 @@ export default function HomePage() {
   const [scriptElapsedSeconds, setScriptElapsedSeconds] = useState(0);
   const [generatedScript, setGeneratedScript] = useState("");
   const [selectedProject, setSelectedProject] = useState<RecapProject | null>(null);
+  const [sceneEditPlan, setSceneEditPlan] = useState<SceneEditPlan | null>(null);
   const [voiceoverUrl, setVoiceoverUrl] = useState("");
   const [isGeneratingVoiceover, setIsGeneratingVoiceover] = useState(false);
   const [isPreviewingEnglish, setIsPreviewingEnglish] = useState(false);
@@ -342,6 +344,7 @@ export default function HomePage() {
     setVoiceoverUrl("");
     setFormError("");
     setGeneratedScript("");
+    setSceneEditPlan(null);
 
     const submitter = (event.nativeEvent as SubmitEvent)
       .submitter as HTMLButtonElement | null;
@@ -567,6 +570,7 @@ export default function HomePage() {
         }
       }
 
+      setSceneEditPlan(null);
       setGeneratedScript(script);
       const scriptedProject = { ...savedProject, script, status: "Ready to edit" as ProjectStatus };
       setSelectedProject(scriptedProject);
@@ -671,6 +675,7 @@ export default function HomePage() {
         current.map((item) => item.id === project.id ? completedProject : item)
       );
       setSelectedProject(completedProject);
+      setSceneEditPlan(null);
       setGeneratedScript(script);
       setNotice("Recap script generated and saved to this project.");
       window.setTimeout(() => setNotice(""), 7000);
@@ -688,6 +693,7 @@ export default function HomePage() {
     if (englishAudioUrl) URL.revokeObjectURL(englishAudioUrl);
     if (englishSrtUrl) URL.revokeObjectURL(englishSrtUrl);
     setSelectedProject(project);
+    setSceneEditPlan(null);
     setTitle(project.title);
     setSourceUrl(project.sourceUrl);
     setLanguage(project.language);
@@ -1282,6 +1288,15 @@ export default function HomePage() {
                 subtitleUrl={selectedProject.language === "English" ? englishSrtUrl : undefined}
                 projectTitle={selectedProject.title}
                 expectedDuration={selectedProject.duration}
+                scenePlan={sceneEditPlan}
+              />
+            )}
+            {selectedProject && generatedScript && (
+              <ScenePlanBuilder
+                videoUrl={selectedProject.sourceUrl}
+                script={generatedScript}
+                language={selectedProject.language}
+                onPlanGenerated={setSceneEditPlan}
               />
             )}
             {formError && <p className="form-error" role="alert">{formError}</p>}
