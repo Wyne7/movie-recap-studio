@@ -69,16 +69,18 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
     const videoUrl = String(body.videoUrl ?? "").trim();
+    const storyContext = String(body.storyContext ?? "").trim().slice(0, 3000);
+    const isStoryVisual = Boolean(storyContext);
     const segment = body.segment ?? {};
     const sourceStart = Number(segment.sourceStartSeconds);
     const sourceEnd = Number(segment.sourceEndSeconds);
     const narrationText = String(segment.narrationText ?? "").trim().slice(0, 1200);
     const sceneReason = String(segment.sceneReason ?? "").trim().slice(0, 300);
-    const style = ["cinematic", "fast_paced", "documentary"].includes(body.style) ? body.style : "cinematic";
+    const style = ["cinematic", "fast_paced", "documentary", "storybook", "anime-inspired", "3d-animation"].includes(body.style) ? body.style : "cinematic";
     const aspectRatio = body.aspectRatio === "9:16" ? "9:16" : "16:9";
 
-    if (!isValidYouTubeUrl(videoUrl)) {
-      return NextResponse.json({ success: false, error: "Enter a valid public YouTube URL for AI visual generation." }, { status: 400 });
+    if (!isStoryVisual && !isValidYouTubeUrl(videoUrl)) {
+      return NextResponse.json({ success: false, error: "Enter a valid public YouTube URL or provide an AI story context." }, { status: 400 });
     }
     if (!Number.isFinite(sourceStart) || !Number.isFinite(sourceEnd) || sourceStart < 0 || sourceEnd <= sourceStart || sourceEnd - sourceStart > 18) {
       return NextResponse.json({ success: false, error: "The selected scene has invalid source timestamps. Generate the scene plan again." }, { status: 400 });
@@ -88,12 +90,14 @@ export async function POST(request: NextRequest) {
     }
 
     const prompt = [
-      "Create one high-quality, original cinematic illustration for a movie recap video.",
-      "Use the supplied public video as visual context and focus on the scene around source timestamp " +
-        sourceStart.toFixed(1) + " to " + sourceEnd.toFixed(1) + " seconds.",
+      "Create one high-quality, original illustration for a short-story video.",
+      isStoryVisual
+        ? "This is an original AI-written story. Follow this character and world guide so every image stays consistent: " + storyContext
+        : "Use the supplied public video as visual context and focus on the scene around source timestamp " +
+          sourceStart.toFixed(1) + " to " + sourceEnd.toFixed(1) + " seconds.",
       "What should be depicted: " + sceneReason,
       "Narration this image accompanies: " + narrationText,
-      "Editing style: " + style + ".",
+      "Visual art direction: " + style + ".",
       "Make a coherent, visually rich, story-relevant image with strong composition and no text, captions, logos, watermarks, borders, or UI.",
       "Create a new illustrative interpretation. Do not reproduce an exact video frame, poster, trademark, or distinctive copyrighted character design.",
       "The image is one still in a larger sequence, so avoid title-card layouts.",
@@ -104,10 +108,12 @@ export async function POST(request: NextRequest) {
       headers: { "x-goog-api-key": apiKey, "Content-Type": "application/json" },
       body: JSON.stringify({
         model: IMAGE_MODEL,
-        input: [
-          { type: "video", uri: videoUrl, mime_type: "video/mp4" },
-          { type: "text", text: prompt },
-        ],
+        input: isStoryVisual
+          ? [{ type: "text", text: prompt }]
+          : [
+              { type: "video", uri: videoUrl, mime_type: "video/mp4" },
+              { type: "text", text: prompt },
+            ],
         response_format: { type: "image", aspect_ratio: aspectRatio },
       }),
       cache: "no-store",

@@ -10,9 +10,10 @@ type VideoRendererProps = {
   audioUrl: string;
   subtitleUrl?: string;
   projectTitle: string;
-  expectedDuration: "3 min" | "5 min" | "10 min";
+  expectedDuration: "1 min" | "1.5 min" | "2 min" | "3 min" | "5 min" | "10 min";
   sourceVideoUrl: string;
   scenePlan?: SceneEditPlan | null;
+  sectionId?: string;
 };
 
 const CORE_BASE_URL = "https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/umd";
@@ -36,6 +37,7 @@ export function VideoRenderer({
   expectedDuration,
   sourceVideoUrl,
   scenePlan,
+  sectionId = "video-rendering-section",
 }: VideoRendererProps) {
   const ffmpegRef = useRef<FFmpegInstance | null>(null);
   const ffmpegLoadedRef = useRef(false);
@@ -89,7 +91,7 @@ export function VideoRenderer({
     if (!scenePlan?.segments.length) {
       throw new Error("Generate the AI Scene Selection plan first, then create AI visuals.");
     }
-    if (!sourceVideoUrl) throw new Error("This project has no YouTube source URL for AI visual generation.");
+    if (!sourceVideoUrl && scenePlan?.sourceType !== "story") throw new Error("This project has no YouTube source URL for AI visual generation.");
     const supabase = getSupabaseBrowserClient();
     if (!supabase) throw new Error("Sign in is required to generate AI visuals.");
     const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
@@ -102,7 +104,7 @@ export function VideoRenderer({
     setVisualProgress({ completed: 0, total: segments.length });
     for (let index = 0; index < segments.length; index += 1) {
       const segment = segments[index];
-      setStatus("Generating AI visual " + (index + 1) + " of " + segments.length + " from the YouTube scene plan…");
+      setStatus("Generating AI visual " + (index + 1) + " of " + segments.length + (scenePlan.sourceType === "story" ? " from the original story scene…" : " from the YouTube scene plan…"));
       const response = await fetch("/api/generate-ai-visual", {
         method: "POST",
         headers: {
@@ -111,6 +113,7 @@ export function VideoRenderer({
         },
         body: JSON.stringify({
           videoUrl: sourceVideoUrl,
+          storyContext: scenePlan.sourceType === "story" ? scenePlan.storyContext : undefined,
           segment,
           style: scenePlan.style,
           aspectRatio: scenePlan.aspectRatio,
@@ -141,8 +144,9 @@ export function VideoRenderer({
       setError("Paste an authorized direct video-file URL or use the optional local-file fallback.");
       return;
     }
-    if (visualMode === "ai_visuals" && imageFiles.length === 0 && generatedImageFiles.length === 0 && (!scenePlan?.segments.length || !sourceVideoUrl)) {
-      setError("Generate AI Scene Selection first. The app will then create visuals from your YouTube link automatically, or you can upload your own images.");
+    if (visualMode === "ai_visuals" && imageFiles.length === 0 && generatedImageFiles.length === 0 &&
+        (!scenePlan?.segments.length || (!sourceVideoUrl && scenePlan.sourceType !== "story"))) {
+      setError("Generate AI Scene Selection or an AI story storyboard first. The app can create original visuals from either source, or you can upload your own images.");
       return;
     }
     if (videoFile && videoFile.size > MAX_VIDEO_BYTES) {
@@ -286,6 +290,7 @@ export function VideoRenderer({
       } else {
         const imageCount = renderImages.length;
         const secondsPerImage = duration / imageCount;
+        const storySegments = scenePlan?.sourceType === "story" && imageCount === scenePlan.segments.length ? scenePlan.segments : [];
         const filters: string[] = [];
         const concatInputs: string[] = [];
         for (let index = 0; index < imageCount; index += 1) {
@@ -294,7 +299,10 @@ export function VideoRenderer({
           const safeExtension = ["jpg", "jpeg", "png", "webp"].includes(extension) ? extension : "jpg";
           const inputName = "visual-" + index + "." + safeExtension;
           await ffmpeg.writeFile(inputName, await fetchFile(file));
-          args.push("-loop", "1", "-framerate", "30", "-t", secondsPerImage.toFixed(3), "-i", inputName);
+          const plannedDuration = storySegments[index]
+            ? Math.max(0.5, storySegments[index].narrationEndSeconds - storySegments[index].narrationStartSeconds)
+            : secondsPerImage;
+          args.push("-loop", "1", "-framerate", "30", "-t", plannedDuration.toFixed(3), "-i", inputName);
           filters.push(
             "[" + index + ":v]scale=" + width + ":" + height + ":force_original_aspect_ratio=decrease," +
             "pad=" + width + ":" + height + ":(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30,format=yuv420p[v" + index + "]"
@@ -379,7 +387,7 @@ export function VideoRenderer({
     : "Reading audio duration…";
 
   return (
-    <section id="video-rendering-section" style={{ border: "1px solid #e7e7ed", borderRadius: 9, padding: 13, display: "grid", gap: 10, scrollMarginTop: 24 }}>
+    <section id={sectionId} style={{ border: "1px solid #e7e7ed", borderRadius: 9, padding: 13, display: "grid", gap: 10, scrollMarginTop: 24 }}>
       <div>
         <h3 style={{ fontSize: 12, margin: "0 0 5px" }}>Video Rendering · MP4</h3>
         <p style={{ fontSize: 11, color: "#747484", margin: 0 }}>
@@ -431,21 +439,23 @@ export function VideoRenderer({
             disabled={isRendering}
           />
           <small style={{ display: "block", color: "#747484", fontWeight: 400, marginTop: 4 }}>
-            After AI Scene Selection, the app can generate up to 12 original scene illustrations from this YouTube link and arrange them into a slideshow. You can also upload your own images instead. Image generation uses your configured Gemini API quota and may incur charges.
+            {scenePlan?.sourceType === "story"
+              ? "The app generates one original illustration for each AI-written story scene, keeping the character guide consistent, then arranges them using each scene's narration duration."
+              : "After AI Scene Selection, the app can generate up to 12 original scene illustrations from this YouTube link and arrange them into a slideshow."} You can also upload your own images instead. Image generation uses your configured Gemini API quota and may incur charges.
           </small>
         </label>
       )}
 
       <div className="modal-note">
         Narration length: <strong>{durationLabel}</strong> · Project setting: <strong>{expectedDuration}</strong>{scenePlan ? " · AI edit plan: " + scenePlan.segments.length + " scenes · " + scenePlan.aspectRatio : ""}
-        {subtitleUrl ? " · Timed SRT subtitles will be embedded as a selectable subtitle track." : " · No subtitle file is attached to this voiceover."}
+        {subtitleUrl ? " · SRT captions will be burned into the picture and embedded as a selectable subtitle track." : " · No subtitle file is attached to this voiceover."}
       </div>
 
       <button
         type="button"
         className="primary-button"
         onClick={renderVideo}
-        disabled={isRendering || !audioDuration || (visualMode === "original_clips" ? (!videoFile && !authorizedMediaUrl.trim()) : (imageFiles.length === 0 && generatedImageFiles.length === 0 && (!scenePlan?.segments.length || !sourceVideoUrl)))}
+        disabled={isRendering || !audioDuration || (visualMode === "original_clips" ? (!videoFile && !authorizedMediaUrl.trim()) : (imageFiles.length === 0 && generatedImageFiles.length === 0 && (!scenePlan?.segments.length || (!sourceVideoUrl && scenePlan?.sourceType !== "story"))))}
       >
         {isRendering ? "Working…" : visualMode === "ai_visuals" && imageFiles.length === 0 && generatedImageFiles.length === 0 ? "Generate AI visuals + Render MP4 →" : "Render MP4 video →"}
       </button>

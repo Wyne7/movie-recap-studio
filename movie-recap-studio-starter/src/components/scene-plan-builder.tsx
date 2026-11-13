@@ -18,6 +18,8 @@ export type SceneEditPlan = {
   aspectRatio: "16:9" | "9:16";
   segments: SceneEditSegment[];
   timingSource?: "srt" | "estimated";
+  sourceType?: "youtube" | "story";
+  storyContext?: string;
 };
 
 type Props = {
