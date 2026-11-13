@@ -174,8 +174,11 @@ export function ScenePlanBuilder({ videoUrl, script, language, audioUrl, subtitl
           </select>
         </label>
       </div>
-      <button type="button" className="secondary-button" onClick={generatePlan} disabled={busy || script.trim().length < 80}>
-        {busy ? "AI is analyzing scenes…" : "Generate AI Scene Edit Plan →"}
+      {!audioUrl || !subtitleUrl ? (
+        <p className="modal-note" role="status">Precise WAV/SRT scene matching currently requires an English narration WAV and its matching SRT file to be loaded first.</p>
+      ) : null}
+      <button type="button" className="secondary-button" onClick={generatePlan} disabled={busy || script.trim().length < 80 || !audioUrl || !subtitleUrl}>
+        {busy ? "AI is analyzing scenes…" : "Generate SRT-Synced Scene Edit Plan →"}
       </button>
       {busy && (
         <div className="modal-note" role="status" aria-live="polite" style={{ display: "grid", gap: 7 }}>
