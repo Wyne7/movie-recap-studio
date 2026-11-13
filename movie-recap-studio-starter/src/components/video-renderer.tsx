@@ -210,7 +210,7 @@ export function VideoRenderer({
         } else {
           args.push("-stream_loop", "-1", "-i", "source-video.mp4");
           audioInputIndex = 1;
-          videoMap = "1:v:0";
+          videoMap = "0:v:0";
         }
       } else {
         const imageCount = imageFiles.length;
@@ -325,7 +325,7 @@ export function VideoRenderer({
             disabled={isRendering}
           />
           <small style={{ display: "block", color: "#747484", fontWeight: 400, marginTop: 4 }}>
-            Upload up to 12 AI-generated images. They will be arranged as a 16:9 slideshow. This version renders images you provide; automatic AI image generation is a separate future feature.
+            Upload up to 12 AI-generated images. They will be arranged as a {scenePlan?.aspectRatio === "9:16" ? "9:16" : "16:9"} slideshow. This version renders images you provide; automatic AI image generation is a separate future feature.
           </small>
         </label>
       )}
