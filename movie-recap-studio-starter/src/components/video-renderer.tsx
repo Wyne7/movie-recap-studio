@@ -13,6 +13,7 @@ type VideoRendererProps = {
   expectedDuration: "1 min" | "1.5 min" | "2 min" | "3 min" | "5 min" | "10 min";
   sourceVideoUrl: string;
   scenePlan?: SceneEditPlan | null;
+  sectionId?: string;
 };
 
 const CORE_BASE_URL = "https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/umd";
@@ -36,6 +37,7 @@ export function VideoRenderer({
   expectedDuration,
   sourceVideoUrl,
   scenePlan,
+  sectionId = "video-rendering-section",
 }: VideoRendererProps) {
   const ffmpegRef = useRef<FFmpegInstance | null>(null);
   const ffmpegLoadedRef = useRef(false);
@@ -368,7 +370,7 @@ export function VideoRenderer({
     : "Reading audio duration…";
 
   return (
-    <section id="video-rendering-section" style={{ border: "1px solid #e7e7ed", borderRadius: 9, padding: 13, display: "grid", gap: 10, scrollMarginTop: 24 }}>
+    <section id={sectionId} style={{ border: "1px solid #e7e7ed", borderRadius: 9, padding: 13, display: "grid", gap: 10, scrollMarginTop: 24 }}>
       <div>
         <h3 style={{ fontSize: 12, margin: "0 0 5px" }}>Video Rendering · MP4</h3>
         <p style={{ fontSize: 11, color: "#747484", margin: 0 }}>
