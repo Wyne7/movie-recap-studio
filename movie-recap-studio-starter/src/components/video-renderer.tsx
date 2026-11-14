@@ -265,7 +265,8 @@ export function VideoRenderer({
             const inputIndex = index + 1;
             const sourceLength = segment.sourceEndSeconds - segment.sourceStartSeconds;
             const targetStart = segment.narrationStartSeconds;
-            const targetLength = segment.narrationEndSeconds - segment.narrationStartSeconds;
+            const targetEnd = segment.narrationEndSeconds;
+            const targetLength = targetEnd - targetStart;
             const clipLabel = "clip" + index;
             const outputLabel = "base" + (index + 1);
             filters.push(
@@ -275,8 +276,10 @@ export function VideoRenderer({
               ",setsar=1,fps=30,format=yuv420p[" + clipLabel + "]"
             );
             filters.push(
-              "[" + previous + "][" + clipLabel + "]overlay=eof_action=repeat:shortest=0:enable='gte(t," +
-              targetStart.toFixed(3) + ")'[" + outputLabel + "]"
+              // Keep each selected clip visible only during its matching narration window.
+              // eof_action=repeat holds a short source clip's final frame, but never beyond targetEnd.
+              "[" + previous + "][" + clipLabel + "]overlay=eof_action=repeat:shortest=0:enable='between(t," +
+              targetStart.toFixed(3) + "," + targetEnd.toFixed(3) + ")'[" + outputLabel + "]"
             );
             previous = outputLabel;
           });
