@@ -122,46 +122,40 @@ export function StoryStudio() {
   }
 
   function updateScene(sceneIndex: number, field: "narrationText" | "visualPrompt", value: string) {
-    setStory((current) => {
-      if (!current) return current;
-      const scenes = current.scenes.map((scene) =>
-        scene.index === sceneIndex ? { ...scene, [field]: value } : scene
-      );
-      const nextStory = { ...current, scenes, script: scenes.map((scene) => scene.narrationText).join("\n\n") };
-      setScript(nextStory.script);
-      clearVoiceAssets();
-      return nextStory;
-    });
+    if (!story) return;
+    const scenes = story.scenes.map((scene) =>
+      scene.index === sceneIndex ? { ...scene, [field]: value } : scene
+    );
+    const nextStory = { ...story, scenes, script: scenes.map((scene) => scene.narrationText).join("\n\n") };
+    setStory(nextStory);
+    setScript(nextStory.script);
+    clearVoiceAssets();
     setProgress("Scene updated. Regenerate voiceover and subtitles before rendering so everything stays in sync.");
   }
 
   function moveScene(sceneIndex: number, direction: -1 | 1) {
-    setStory((current) => {
-      if (!current) return current;
-      const from = current.scenes.findIndex((scene) => scene.index === sceneIndex);
-      const to = from + direction;
-      if (from < 0 || to < 0 || to >= current.scenes.length) return current;
-      const scenes = [...current.scenes];
-      [scenes[from], scenes[to]] = [scenes[to], scenes[from]];
-      const reindexed = scenes.map((scene, index) => ({ ...scene, index: index + 1 }));
-      const nextStory = { ...current, scenes: reindexed, script: reindexed.map((scene) => scene.narrationText).join("\n\n") };
-      setScript(nextStory.script);
-      clearVoiceAssets();
-      return nextStory;
-    });
+    if (!story) return;
+    const from = story.scenes.findIndex((scene) => scene.index === sceneIndex);
+    const to = from + direction;
+    if (from < 0 || to < 0 || to >= story.scenes.length) return;
+    const scenes = [...story.scenes];
+    [scenes[from], scenes[to]] = [scenes[to], scenes[from]];
+    const reindexed = scenes.map((scene, index) => ({ ...scene, index: index + 1 }));
+    const nextStory = { ...story, scenes: reindexed, script: reindexed.map((scene) => scene.narrationText).join("\n\n") };
+    setStory(nextStory);
+    setScript(nextStory.script);
+    clearVoiceAssets();
     setProgress("Scene order changed. Regenerate voiceover and subtitles before rendering.");
   }
 
   function deleteScene(sceneIndex: number) {
-    setStory((current) => {
-      if (!current || current.scenes.length <= 4) return current;
-      const scenes = current.scenes.filter((scene) => scene.index !== sceneIndex)
-        .map((scene, index) => ({ ...scene, index: index + 1 }));
-      const nextStory = { ...current, scenes, script: scenes.map((scene) => scene.narrationText).join("\n\n") };
-      setScript(nextStory.script);
-      clearVoiceAssets();
-      return nextStory;
-    });
+    if (!story || story.scenes.length <= 4) return;
+    const scenes = story.scenes.filter((scene) => scene.index !== sceneIndex)
+      .map((scene, index) => ({ ...scene, index: index + 1 }));
+    const nextStory = { ...story, scenes, script: scenes.map((scene) => scene.narrationText).join("\n\n") };
+    setStory(nextStory);
+    setScript(nextStory.script);
+    clearVoiceAssets();
     setProgress("Scene removed. Regenerate voiceover and subtitles before rendering.");
   }
 
@@ -419,14 +413,9 @@ export function StoryStudio() {
       {story && (
         <div style={{ border: "1px solid #e7e7ed", borderRadius: 10, padding: 13, display: "grid", gap: 10 }}>
           <div><h3 style={{ margin: "0 0 4px", fontSize: 16 }}>{story.title}</h3><p style={{ margin: 0, color: "#747484", fontSize: 12 }}>{story.logline}</p></div>
-          <label className="field-label">Editable narration script
-            <textarea value={script} onChange={(event) => {
-              const nextScript = event.target.value;
-              setScript(nextScript);
-              setStory((current) => current ? { ...current, script: nextScript } : current);
-              clearVoiceAssets();
-            }} rows={8} />
-            <small style={{ color: "#747484" }}>ပြင်ဆင်ထားတဲ့ Script ကို Scene တစ်ခုချင်းစီထဲက narration နဲ့ တူအောင် ပြင်ပါ။ Scene narration ကိုပြင်ရင် Script လည်း အလိုအလျောက် update ဖြစ်မယ်။</small>
+          <label className="field-label">Story script preview
+            <textarea value={script} readOnly rows={8} />
+            <small style={{ color: "#747484" }}>Script ကိုပြင်ချင်ရင် အောက်က Scene တစ်ခုချင်းစီရဲ့ narration ကို ပြင်ပါ။ ဒီနေရာမှာ စုစုပေါင်း Script ကို အလိုအလျောက် update လုပ်ပေးမယ်။</small>
           </label>
           <div style={{ display: "grid", gap: 7 }}>
             <strong style={{ fontSize: 12 }}>Editable Storyboard · {story.scenes.length} scenes</strong>
