@@ -121,6 +121,50 @@ export function StoryStudio() {
     setScenePlan(null);
   }
 
+  function updateScene(sceneIndex: number, field: "narrationText" | "visualPrompt", value: string) {
+    setStory((current) => {
+      if (!current) return current;
+      const scenes = current.scenes.map((scene) =>
+        scene.index === sceneIndex ? { ...scene, [field]: value } : scene
+      );
+      const nextStory = { ...current, scenes, script: scenes.map((scene) => scene.narrationText).join("\n\n") };
+      setScript(nextStory.script);
+      clearVoiceAssets();
+      return nextStory;
+    });
+    setProgress("Scene updated. Regenerate voiceover and subtitles before rendering so everything stays in sync.");
+  }
+
+  function moveScene(sceneIndex: number, direction: -1 | 1) {
+    setStory((current) => {
+      if (!current) return current;
+      const from = current.scenes.findIndex((scene) => scene.index === sceneIndex);
+      const to = from + direction;
+      if (from < 0 || to < 0 || to >= current.scenes.length) return current;
+      const scenes = [...current.scenes];
+      [scenes[from], scenes[to]] = [scenes[to], scenes[from]];
+      const reindexed = scenes.map((scene, index) => ({ ...scene, index: index + 1 }));
+      const nextStory = { ...current, scenes: reindexed, script: reindexed.map((scene) => scene.narrationText).join("\n\n") };
+      setScript(nextStory.script);
+      clearVoiceAssets();
+      return nextStory;
+    });
+    setProgress("Scene order changed. Regenerate voiceover and subtitles before rendering.");
+  }
+
+  function deleteScene(sceneIndex: number) {
+    setStory((current) => {
+      if (!current || current.scenes.length <= 4) return current;
+      const scenes = current.scenes.filter((scene) => scene.index !== sceneIndex)
+        .map((scene, index) => ({ ...scene, index: index + 1 }));
+      const nextStory = { ...current, scenes, script: scenes.map((scene) => scene.narrationText).join("\n\n") };
+      setScript(nextStory.script);
+      clearVoiceAssets();
+      return nextStory;
+    });
+    setProgress("Scene removed. Regenerate voiceover and subtitles before rendering.");
+  }
+
   async function generateStory() {
     if (busy || idea.trim().length < 8) return;
     setBusy(true);
@@ -375,18 +419,36 @@ export function StoryStudio() {
       {story && (
         <div style={{ border: "1px solid #e7e7ed", borderRadius: 10, padding: 13, display: "grid", gap: 10 }}>
           <div><h3 style={{ margin: "0 0 4px", fontSize: 16 }}>{story.title}</h3><p style={{ margin: 0, color: "#747484", fontSize: 12 }}>{story.logline}</p></div>
-          <label className="field-label">Generated narration script
-            <textarea value={script} readOnly rows={8} />
+          <label className="field-label">Editable narration script
+            <textarea value={script} onChange={(event) => {
+              const nextScript = event.target.value;
+              setScript(nextScript);
+              setStory((current) => current ? { ...current, script: nextScript } : current);
+              clearVoiceAssets();
+            }} rows={8} />
+            <small style={{ color: "#747484" }}>ပြင်ဆင်ထားတဲ့ Script ကို Scene တစ်ခုချင်းစီထဲက narration နဲ့ တူအောင် ပြင်ပါ။ Scene narration ကိုပြင်ရင် Script လည်း အလိုအလျောက် update ဖြစ်မယ်။</small>
           </label>
           <div style={{ display: "grid", gap: 7 }}>
-            <strong style={{ fontSize: 12 }}>Storyboard · {story.scenes.length} scenes</strong>
-            {story.scenes.map((scene) => (
-              <article key={scene.index} style={{ padding: 10, border: "1px solid #ececf1", borderRadius: 8, display: "grid", gap: 4 }}>
-                <strong style={{ fontSize: 11 }}>Scene {scene.index} · {scene.mood || "Story beat"}</strong>
-                <p style={{ fontSize: 12, margin: 0, lineHeight: 1.5 }}>{scene.narrationText}</p>
-                <small style={{ color: "#747484", lineHeight: 1.5 }}>{scene.visualPrompt}</small>
+            <strong style={{ fontSize: 12 }}>Editable Storyboard · {story.scenes.length} scenes</strong>
+            {story.scenes.map((scene, scenePosition) => (
+              <article key={scene.index} style={{ padding: 10, border: "1px solid #ececf1", borderRadius: 8, display: "grid", gap: 7 }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+                  <strong style={{ fontSize: 11 }}>Scene {scene.index} · {scene.mood || "Story beat"}</strong>
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <button type="button" className="secondary-button" onClick={() => moveScene(scene.index, -1)} disabled={scenePosition === 0 || voiceBusy} aria-label={"Move scene " + scene.index + " up"}>↑</button>
+                    <button type="button" className="secondary-button" onClick={() => moveScene(scene.index, 1)} disabled={scenePosition === story.scenes.length - 1 || voiceBusy} aria-label={"Move scene " + scene.index + " down"}>↓</button>
+                    <button type="button" className="secondary-button" onClick={() => deleteScene(scene.index)} disabled={story.scenes.length <= 4 || voiceBusy} aria-label={"Delete scene " + scene.index}>Delete</button>
+                  </div>
+                </div>
+                <label className="field-label">Scene narration
+                  <textarea value={scene.narrationText} onChange={(event) => updateScene(scene.index, "narrationText", event.target.value)} rows={3} maxLength={900} disabled={voiceBusy} />
+                </label>
+                <label className="field-label">Visual prompt
+                  <textarea value={scene.visualPrompt} onChange={(event) => updateScene(scene.index, "visualPrompt", event.target.value)} rows={3} maxLength={700} disabled={voiceBusy} />
+                </label>
               </article>
             ))}
+            <small style={{ color: "#747484" }}>Scene အနည်းဆုံး ၄ ခုထားရမယ်။ အပေါ်/အောက် ခလုတ်နဲ့ အစီအစဉ်ပြောင်းနိုင်ပြီး Delete နဲ့ ဖျက်နိုင်တယ်။ Scene တစ်ခုခုပြင်လိုက်ရင် အရင် Voiceover/SRT ကိုဖယ်ရှားပြီး အသစ်ပြန်ထုတ်ရမယ်။</small>
           </div>
           <button type="button" className="secondary-button" onClick={generateVoiceover} disabled={voiceBusy}>
             {voiceBusy ? "Generating narration and subtitles…" : "Generate " + language + " Voiceover + Timed SRT →"}
