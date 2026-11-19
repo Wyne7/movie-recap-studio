@@ -16,7 +16,7 @@ function getOutputText(data: any): string {
   return "";
 }
 
-function parseStory(raw: string) {
+function parseStory(raw: string, durationSeconds: number) {
   const cleaned = raw.replace(/^`{3}(?:json)?\s*/i, "").replace(/\s*`{3}$/, "").trim();
   let parsed: any;
   try {
@@ -43,8 +43,23 @@ function parseStory(raw: string) {
     throw new Error("One or more story scenes are missing narration or visual descriptions. Please regenerate.");
   }
   const script = scenes.map((scene: any) => scene.narrationText).join("\n\n");
-  if (script.length < 150 || script.length > 7000) {
-    throw new Error("The generated story is too short or too long. Please choose a different duration.");
+  if (script.length > 7000) {
+    throw new Error("The generated story is too long. Please choose a different duration.");
+  }
+  const wordCount = script.trim().split(/\s+/).filter(Boolean).length;
+  const wordTargets: Record<number, [number, number]> = {
+    60: [105, 165],
+    90: [160, 230],
+    120: [220, 310],
+    180: [330, 450],
+  };
+  const [minimumWords, maximumWords] = wordTargets[durationSeconds] ?? [105, 165];
+  if (wordCount < minimumWords || wordCount > maximumWords) {
+    throw new Error(
+      "The story narration has " + wordCount + " words, but a " +
+      Math.round(durationSeconds / 60) + "-minute story needs about " +
+      minimumWords + "–" + maximumWords + " words. Please regenerate."
+    );
   }
   return { title, logline, characterBible, script, scenes };
 }
@@ -81,16 +96,20 @@ export async function POST(request: NextRequest) {
     }
 
     const sceneCount = durationSeconds <= 90 ? "4–5" : durationSeconds <= 120 ? "5–6" : "6–8";
+    const wordRange = durationSeconds === 60 ? "120–145" : durationSeconds === 90 ? "180–210" : durationSeconds === 120 ? "250–290" : "380–420";
     const prompt = [
-      "Write an original, engaging short story and compact visual storyboard. Do not adapt existing copyrighted works or characters.",
-      "Language: " + language + ". Genre: " + genre + ". Spoken duration: about " + durationSeconds + " seconds.",
-      "Use a strong opening, clear motivation, rising action, one emotional turn, and a satisfying ending.",
-      "Create exactly " + sceneCount + " sequential scenes. Each narrationText should be 1–2 natural spoken sentences; total narration must fit the requested duration.",
+      "Write an original, engaging short story and a matching visual storyboard. Do not adapt existing copyrighted works or characters.",
+      "Language: " + language + ". Genre: " + genre + ". Target spoken duration: " + durationSeconds + " seconds.",
+      "CRITICAL NARRATION LENGTH: The complete spoken narration MUST contain " + wordRange + " words. This is mandatory; do not write a summary or a short version. Target a natural narration pace of about 130–140 words per minute.",
+      "Use a strong opening, clear character motivation, rising action, one meaningful emotional turn, and a satisfying ending.",
+      "Create " + sceneCount + " sequential scenes. Distribute the full word target evenly across scenes. For a 3-minute story, each of 6–8 scenes should usually contain about 50–65 spoken words, not just 1–2 short sentences.",
+      "Each narrationText should be a complete, detailed voiceover passage with enough natural spoken content to reach the required total word count. Do not use filler or repeat ideas.",
       "Keep character appearance and clothing consistent. characterBible: one concise appearance guide.",
-      "Each visualPrompt: one concise but useful image prompt matching its narration, including subject/action, setting, framing, and lighting. No text, logos, or watermark.",
+      "Each visualPrompt: one concise image prompt matching its narration, including subject/action, setting, framing, and lighting. No text, logos, or watermark.",
       "Keep the story suitable for a general audience.",
+      "Before returning JSON, check that all narrationText fields combined contain " + wordRange + " words. Expand scenes if needed.",
       "Return ONLY valid JSON, no markdown, using this exact shape:",
-      '{"title":"Short title","logline":"One sentence","characterBible":"Concise character appearance guide","scenes":[{"narrationText":"Short voiceover narration.","visualPrompt":"Concise scene image prompt.","mood":"wonder"}]}',
+      '{"title":"Short title","logline":"One sentence","characterBible":"Concise character appearance guide","scenes":[{"narrationText":"A full voiceover passage with sufficient words for the requested duration.","visualPrompt":"Concise scene image prompt.","mood":"wonder"}]}',
       "Story idea: " + idea,
     ].join("\n");
 
@@ -108,7 +127,7 @@ export async function POST(request: NextRequest) {
         const raw = getOutputText(data);
         if (!raw) return NextResponse.json({ success: false, error: "Gemini returned an empty story. Please try again." }, { status: 502 });
         try {
-          return NextResponse.json({ success: true, model, language, genre, durationSeconds, visualStyle, ...parseStory(raw) });
+          return NextResponse.json({ success: true, model, language, genre, durationSeconds, visualStyle, ...parseStory(raw, durationSeconds) });
         } catch (error) {
           lastMessage = error instanceof Error ? error.message : "The AI story format was invalid.";
           // Retry with the fallback model if this response is malformed.
