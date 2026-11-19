@@ -73,30 +73,28 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: "Describe the story idea in at least 8 characters." }, { status: 400 });
     }
 
+    const sceneCount = durationSeconds <= 90 ? "4–5" : durationSeconds <= 120 ? "5–6" : "6–8";
     const prompt = [
-      "You are an original short-story writer and visual storyboard director.",
-      "Create a completely original, coherent short story from the user's idea. Do not adapt an existing movie, book, game, or copyrighted character.",
-      "Write in " + language + ". Genre: " + genre + ". Target spoken duration: about " + durationSeconds + " seconds.",
-      "Structure the story with a strong opening hook, clear character motivation, rising action, one meaningful twist or emotional beat, and a satisfying ending.",
-      "Return 4 to 12 sequential scenes. Each scene must have a narrationText field containing natural voiceover prose and a visualPrompt field describing one clear image that can illustrate that exact narration.",
-      "Keep each scene's narrationText to 1–3 spoken sentences. The complete narration should fit the target duration.",
-      "Keep the same character appearances, clothing, age range, and visual identity consistent across every visualPrompt. The characterBible must describe these fixed details.",
-      "Visual prompts must describe visible subjects, actions, location, camera framing, lighting, and mood. Do not put text, captions, lettering, logos, or watermarks in the image.",
-      "Avoid graphic violence, sexual content, and hateful content. Keep it suitable for a general audience.",
-      "Return ONLY valid JSON, no markdown, with this exact shape:",
-      '{"title":"Story title","logline":"One sentence","characterBible":"Consistent character appearance guide","scenes":[{"narrationText":"Voiceover for this scene.","visualPrompt":"Detailed visual description for the matching scene.","mood":"wonder"}]}',
-      "User's story idea:",
-      idea,
-    ].join("\n\n");
+      "Write an original, engaging short story and compact visual storyboard. Do not adapt existing copyrighted works or characters.",
+      "Language: " + language + ". Genre: " + genre + ". Spoken duration: about " + durationSeconds + " seconds.",
+      "Use a strong opening, clear motivation, rising action, one emotional turn, and a satisfying ending.",
+      "Create exactly " + sceneCount + " sequential scenes. Each narrationText should be 1–2 natural spoken sentences; total narration must fit the requested duration.",
+      "Keep character appearance and clothing consistent. characterBible: one concise appearance guide.",
+      "Each visualPrompt: one concise but useful image prompt matching its narration, including subject/action, setting, framing, and lighting. No text, logos, or watermark.",
+      "Keep the story suitable for a general audience.",
+      "Return ONLY valid JSON, no markdown, using this exact shape:",
+      '{"title":"Short title","logline":"One sentence","characterBible":"Concise character appearance guide","scenes":[{"narrationText":"Short voiceover narration.","visualPrompt":"Concise scene image prompt.","mood":"wonder"}]}',
+      "Story idea: " + idea,
+    ].join("\n");
 
     let lastMessage = "";
-    for (const model of ["gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.5-flash-lite"]) {
+    for (const model of ["gemini-3.8-flash", "gemini-3.7-flash"]) {
       const response = await fetch(GEMINI_URL, {
         method: "POST",
         headers: { "x-goog-api-key": apiKey, "Content-Type": "application/json" },
         body: JSON.stringify({ model, input: [{ type: "text", text: prompt }] }),
         cache: "no-store",
-        signal: AbortSignal.timeout(150_000),
+        signal: AbortSignal.timeout(75_000),
       });
       const data = await response.json().catch(() => null);
       if (response.ok) {
@@ -109,7 +107,7 @@ export async function POST(request: NextRequest) {
         }
       }
       lastMessage = String(data?.error?.message ?? data?.message ?? "Gemini request failed.");
-      if (![429, 500, 502, 503, 504].includes(response.status)) {
+      if (![500, 502, 503, 504].includes(response.status)) {
         return NextResponse.json({ success: false, error: lastMessage }, { status: response.status });
       }
       if (response.status === 429) break;
