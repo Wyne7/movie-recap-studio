@@ -120,7 +120,7 @@ export async function POST(request: NextRequest) {
         headers: { "x-goog-api-key": apiKey, "Content-Type": "application/json" },
         body: JSON.stringify({ model, input: [{ type: "text", text: prompt }] }),
         cache: "no-store",
-        signal: AbortSignal.timeout(150_000),
+        signal: AbortSignal.timeout(65_000),
       });
       const data = await response.json().catch(() => null);
       if (response.ok) {
