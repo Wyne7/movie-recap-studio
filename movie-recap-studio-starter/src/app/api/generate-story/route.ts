@@ -46,7 +46,7 @@ function parseStory(raw: string, durationSeconds: number) {
   if (script.length > 7000) {
     throw new Error("The generated story is too long. Please choose a different duration.");
   }
-  const wordCount = script.trim().split(/\\s+/).filter(Boolean).length;
+  const wordCount = script.trim().split(/\s+/).filter(Boolean).length;
   const wordTargets: Record<number, [number, number]> = {
     60: [105, 165],
     90: [160, 230],
