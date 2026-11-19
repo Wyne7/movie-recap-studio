@@ -53,6 +53,11 @@ export function VideoRenderer({
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
   const [outputUrl, setOutputUrl] = useState("");
+  const [motionPreset, setMotionPreset] = useState<"zoom-in" | "zoom-out" | "pan-left" | "pan-right" | "pan-up" | "pan-down" | "static">("zoom-in");
+  const [zoomAmount, setZoomAmount] = useState(1.14);
+  const [motionSpeed, setMotionSpeed] = useState(1);
+  const [transitionStyle, setTransitionStyle] = useState<"cut" | "fade">("fade");
+  const [transitionDuration, setTransitionDuration] = useState(0.35);
 
   useEffect(() => {
     setAudioDuration(0);
@@ -306,10 +311,31 @@ export function VideoRenderer({
             ? Math.max(0.5, storySegments[index].narrationEndSeconds - storySegments[index].narrationStartSeconds)
             : secondsPerImage;
           args.push("-loop", "1", "-framerate", "30", "-t", plannedDuration.toFixed(3), "-i", inputName);
-          filters.push(
-            "[" + index + ":v]scale=" + width + ":" + height + ":force_original_aspect_ratio=decrease," +
-            "pad=" + width + ":" + height + ":(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30,format=yuv420p[v" + index + "]"
-          );
+          const frameCount = Math.max(1, Math.ceil(plannedDuration * 30));
+          const safeZoom = Math.max(1.02, Math.min(1.3, zoomAmount));
+          const zoomStep = (0.0008 * motionSpeed).toFixed(5);
+          let zoomExpression = "1";
+          let panX = "(iw-iw/zoom)/2";
+          let panY = "(ih-ih/zoom)/2";
+          if (motionPreset === "zoom-in") zoomExpression = "if(lte(zoom,1.0),1.0,min(zoom+" + zoomStep + "," + safeZoom.toFixed(3) + "))";
+          if (motionPreset === "zoom-out") zoomExpression = "if(lte(zoom,1.0)," + safeZoom.toFixed(3) + ",max(zoom-" + zoomStep + ",1.0))";
+          if (motionPreset.startsWith("pan-")) {
+            zoomExpression = String(safeZoom.toFixed(3));
+            if (motionPreset === "pan-left") panX = "(iw-iw/zoom)*(1-on/" + frameCount + ")";
+            if (motionPreset === "pan-right") panX = "(iw-iw/zoom)*on/" + frameCount;
+            if (motionPreset === "pan-up") panY = "(ih-ih/zoom)*(1-on/" + frameCount + ")";
+            if (motionPreset === "pan-down") panY = "(ih-ih/zoom)*on/" + frameCount;
+          }
+          const motionFilter = "scale=" + Math.round(width * 1.35) + ":" + Math.round(height * 1.35) +
+            ":force_original_aspect_ratio=increase,crop=" + Math.round(width * 1.35) + ":" + Math.round(height * 1.35) +
+            ",zoompan=z='" + zoomExpression + "':x='" + panX + "':y='" + panY +
+            "':d=" + frameCount + ":s=" + width + "x" + height + ":fps=30";
+          const fadeSeconds = Math.min(transitionDuration, Math.max(0.1, plannedDuration / 2));
+          const transitionFilter = transitionStyle === "fade"
+            ? ",fade=t=in:st=0:d=" + fadeSeconds.toFixed(2) +
+              ",fade=t=out:st=" + Math.max(0, plannedDuration - fadeSeconds).toFixed(2) + ":d=" + fadeSeconds.toFixed(2)
+            : "";
+          filters.push("[" + index + ":v]" + motionFilter + transitionFilter + ",setsar=1,format=yuv420p[v" + index + "]");
           concatInputs.push("[v" + index + "]");
         }
         filters.push(concatInputs.join("") + "concat=n=" + imageCount + ":v=1:a=0[vout]");
@@ -433,7 +459,7 @@ export function VideoRenderer({
         </>
       ) : (
         <label className="field-label">
-          AI-generated visual images
+          Scene images (upload your own to skip Gemini)
           <input
             type="file"
             accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp"
@@ -443,10 +469,42 @@ export function VideoRenderer({
           />
           <small style={{ display: "block", color: "#747484", fontWeight: 400, marginTop: 4 }}>
             {scenePlan?.sourceType === "story"
-              ? "The app generates one original illustration for each AI-written story scene, keeping the character guide consistent, then arranges them using each scene's narration duration."
-              : "After AI Scene Selection, the app can generate up to 12 original scene illustrations from this YouTube link and arrange them into a slideshow."} You can also upload your own images instead. Image generation uses your configured Gemini API quota and may incur charges.
+              ? "Upload one image per story scene in the correct order. If you upload images, Gemini image generation is skipped; the app applies the selected camera motion and transitions."
+              : "Upload up to 12 scene images in order. If you upload images, Gemini image generation is skipped; the app applies the selected camera motion and transitions."} You can also upload your own images instead. Automatic image generation is optional and uses your configured Gemini API quota.
           </small>
         </label>
+      )}
+
+      {visualMode === "ai_visuals" && (
+        <div style={{ border: "1px solid #dcdce5", borderRadius: 9, padding: 12, display: "grid", gap: 10 }}>
+          <strong style={{ fontSize: 12 }}>No-AI Motion · Customize your slideshow</strong>
+          <p style={{ margin: 0, color: "#747484", fontSize: 11 }}>
+            Upload your own scene images above to skip Gemini image generation. FFmpeg adds camera movement and transitions locally in your browser.
+          </p>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 9 }}>
+            <label className="field-label">Camera motion
+              <select value={motionPreset} onChange={(event) => { setMotionPreset(event.target.value as typeof motionPreset); clearOutput(); }} disabled={isRendering}>
+                <option value="zoom-in">Slow Zoom In</option><option value="zoom-out">Slow Zoom Out</option>
+                <option value="pan-left">Pan Left</option><option value="pan-right">Pan Right</option>
+                <option value="pan-up">Pan Up</option><option value="pan-down">Pan Down</option><option value="static">Static</option>
+              </select>
+            </label>
+            <label className="field-label">Transition
+              <select value={transitionStyle} onChange={(event) => { setTransitionStyle(event.target.value as typeof transitionStyle); clearOutput(); }} disabled={isRendering}>
+                <option value="fade">Fade to / from black</option><option value="cut">Hard Cut</option>
+              </select>
+            </label>
+          </div>
+          <label className="field-label">Zoom strength · {zoomAmount.toFixed(2)}x
+            <input type="range" min="1.02" max="1.30" step="0.01" value={zoomAmount} onChange={(event) => { setZoomAmount(Number(event.target.value)); clearOutput(); }} disabled={isRendering || motionPreset === "static"} />
+          </label>
+          <label className="field-label">Motion speed · {motionSpeed.toFixed(1)}x
+            <input type="range" min="0.5" max="2" step="0.1" value={motionSpeed} onChange={(event) => { setMotionSpeed(Number(event.target.value)); clearOutput(); }} disabled={isRendering || motionPreset === "static"} />
+          </label>
+          <label className="field-label">Transition duration · {transitionDuration.toFixed(1)} sec
+            <input type="range" min="0.1" max="1.5" step="0.1" value={transitionDuration} onChange={(event) => { setTransitionDuration(Number(event.target.value)); clearOutput(); }} disabled={isRendering || transitionStyle === "cut"} />
+          </label>
+        </div>
       )}
 
       <div className="modal-note">
