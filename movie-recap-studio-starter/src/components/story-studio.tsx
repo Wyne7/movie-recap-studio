@@ -110,6 +110,7 @@ export function StoryStudio() {
   const [voiceBusy, setVoiceBusy] = useState(false);
   const [progress, setProgress] = useState("");
   const [error, setError] = useState("");
+  const [characterPromptCopied, setCharacterPromptCopied] = useState(false);
   const engineRef = useRef<any>(null);
   const localUrlsRef = useRef<string[]>([]);
 
@@ -157,6 +158,31 @@ export function StoryStudio() {
     setScript(nextStory.script);
     clearVoiceAssets();
     setProgress("Scene removed. Regenerate voiceover and subtitles before rendering.");
+  }
+
+  function buildCharacterReferencePrompt(currentStory: StoryResult) {
+    return [
+      "Create a professional character reference sheet for the original story: " + currentStory.title + ".",
+      "CHARACTER DESIGN GUIDE (follow exactly):",
+      currentStory.characterBible,
+      "If the guide describes multiple important characters, give each character a clearly separated reference panel. Do not merge different characters into one person.",
+      "For each character, show four consistent views: full-body front view, full-body side view, full-body back view, and a close-up face portrait.",
+      "Maintain identical facial features, skin tone, hairstyle, hair color, age, body proportions, clothing, colors, shoes, and accessories across all views.",
+      "Use a clean neutral studio background, even professional lighting, clear silhouettes, and a polished " + currentStory.visualStyle + " art style.",
+      "Character design turnaround sheet, production-ready visual reference, high detail.",
+      "No scene action, no extra characters, no text, no labels, no logos, no watermark, no borders, no UI.",
+      "Do not change or reinterpret the established character design."
+    ].join("\n\n");
+  }
+
+  async function copyCharacterPrompt() {
+    if (!story) return;
+    try {
+      await navigator.clipboard.writeText(buildCharacterReferencePrompt(story));
+      setCharacterPromptCopied(true);
+    } catch {
+      setError("Clipboard access was blocked. Select and copy the prompt from the text box.");
+    }
   }
 
   async function generateStory() {
@@ -417,6 +443,17 @@ export function StoryStudio() {
             <textarea value={script} readOnly rows={8} />
             <small style={{ color: "#747484" }}>Script ကိုပြင်ချင်ရင် အောက်က Scene တစ်ခုချင်းစီရဲ့ narration ကို ပြင်ပါ။ ဒီနေရာမှာ စုစုပေါင်း Script ကို အလိုအလျောက် update လုပ်ပေးမယ်။</small>
           </label>
+          <div style={{ border: "1px solid #dfe7f3", borderRadius: 9, padding: 12, display: "grid", gap: 8 }}>
+            <div>
+              <strong style={{ fontSize: 13 }}>Character Reference Image Prompt</strong>
+              <p style={{ margin: "4px 0 0", color: "#747484", fontSize: 12 }}>ဒီ Prompt ကို Copy လုပ်ပြီး ChatGPT Image, Gemini, Leonardo AI စတဲ့ Image Generator တွေမှာ Character Reference Sheet ထုတ်ဖို့ သုံးနိုင်ပါတယ်။</p>
+            </div>
+            <textarea aria-label="Character reference image prompt" readOnly rows={9} value={buildCharacterReferencePrompt(story)} style={{ width: "100%", fontSize: 12, lineHeight: 1.5 }} />
+            <button type="button" className="secondary-button" onClick={copyCharacterPrompt}>
+              {characterPromptCopied ? "Copied Character Prompt ✓" : "Copy Character Prompt"}
+            </button>
+            <small style={{ color: "#747484" }}>Front, side, back နဲ့ close-up view တွေမှာ Character ရဲ့ မျက်နှာ၊ ဆံပင်နဲ့ အဝတ်အစား တစ်သမတ်တည်းဖြစ်အောင် Prompt ထုတ်ပေးထားပါတယ်။</small>
+          </div>
           <div style={{ display: "grid", gap: 7 }}>
             <strong style={{ fontSize: 12 }}>Editable Storyboard · {story.scenes.length} scenes</strong>
             {story.scenes.map((scene, scenePosition) => (
