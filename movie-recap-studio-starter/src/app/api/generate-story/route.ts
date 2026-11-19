@@ -88,13 +88,13 @@ export async function POST(request: NextRequest) {
     ].join("\n");
 
     let lastMessage = "";
-    for (const model of ["gemini-3.8-flash", "gemini-3.7-flash"]) {
+    for (const model of ["gemini-3.5-flash-lite", "gemini-3.7-flash"]) {
       const response = await fetch(GEMINI_URL, {
         method: "POST",
         headers: { "x-goog-api-key": apiKey, "Content-Type": "application/json" },
         body: JSON.stringify({ model, input: [{ type: "text", text: prompt }] }),
         cache: "no-store",
-        signal: AbortSignal.timeout(75_000),
+        signal: AbortSignal.timeout(150_000),
       });
       const data = await response.json().catch(() => null);
       if (response.ok) {
