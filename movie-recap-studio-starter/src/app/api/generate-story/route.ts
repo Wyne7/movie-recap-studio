@@ -23,7 +23,7 @@ function parseStory(raw: string) {
     parsed = JSON.parse(cleaned);
   } catch {
     // Repair the malformed pattern: "visualPrompt":,"A man ..."
-    const repaired = cleaned.replace(/(:\\s*),\\s*(?=")/g, "$1");
+    const repaired = cleaned.replace(/(:\s*),\s*(?=")/g, "$1");
     parsed = JSON.parse(repaired);
   }
   const title = String(parsed?.title ?? "").trim().slice(0, 100);
