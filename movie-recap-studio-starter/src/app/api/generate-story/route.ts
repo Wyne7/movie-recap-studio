@@ -18,7 +18,14 @@ function getOutputText(data: any): string {
 
 function parseStory(raw: string) {
   const cleaned = raw.replace(/^`{3}(?:json)?\s*/i, "").replace(/\s*`{3}$/, "").trim();
-  const parsed = JSON.parse(cleaned);
+  let parsed: any;
+  try {
+    parsed = JSON.parse(cleaned);
+  } catch {
+    // Repair the malformed pattern: "visualPrompt":,"A man ..."
+    const repaired = cleaned.replace(/(:\\s*),\\s*(?=")/g, "$1");
+    parsed = JSON.parse(repaired);
+  }
   const title = String(parsed?.title ?? "").trim().slice(0, 100);
   const logline = String(parsed?.logline ?? "").trim().slice(0, 500);
   const characterBible = String(parsed?.characterBible ?? "").trim().slice(0, 2000);
@@ -103,7 +110,9 @@ export async function POST(request: NextRequest) {
         try {
           return NextResponse.json({ success: true, model, language, genre, durationSeconds, visualStyle, ...parseStory(raw) });
         } catch (error) {
-          return NextResponse.json({ success: false, error: error instanceof Error ? error.message : "The AI story format was invalid." }, { status: 502 });
+          lastMessage = error instanceof Error ? error.message : "The AI story format was invalid.";
+          // Retry with the fallback model if this response is malformed.
+          continue;
         }
       }
       lastMessage = String(data?.error?.message ?? data?.message ?? "Gemini request failed.");
@@ -112,9 +121,12 @@ export async function POST(request: NextRequest) {
       }
       if (response.status === 429) break;
     }
-    return NextResponse.json({ success: false, error: lastMessage.toLowerCase().includes("quota")
-      ? "Gemini free-tier quota is exhausted. Please wait and try again."
-      : "Gemini could not create the story right now. " + lastMessage }, { status: 429 });
+    const invalidJson = /json|unexpected token|complete story|scene/i.test(lastMessage);
+    return NextResponse.json({ success: false, error: invalidJson
+      ? "Gemini returned an incomplete story format twice. Please try again."
+      : lastMessage.toLowerCase().includes("quota")
+        ? "Gemini free-tier quota is exhausted. Please wait and try again."
+        : "Gemini could not create the story right now. " + lastMessage }, { status: invalidJson ? 502 : 429 });
   } catch (error) {
     const timedOut = error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError");
     return NextResponse.json({ success: false, error: timedOut
